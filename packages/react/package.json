@@ -1,0 +1,38 @@
+{
+  "name": "@anya-ui/react",
+  "version": "0.1.0",
+  "description": "React bindings for Anya UI — Provider, hooks, AdaptiveRenderer",
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./index.css": "./dist/index.css"
+  },
+  "scripts": {
+    "build": "tsc && node scripts/copy-css.mjs",
+    "dev": "tsc --watch",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anya-ui/core": "*"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "typescript": "^5.7.0"
+  }
+}

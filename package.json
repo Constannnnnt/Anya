@@ -1,0 +1,11 @@
+{
+  "name": "anya",
+  "private": true,
+  "description": "Anya framework repository (submodule)",
+  "workspaces": [
+    "packages/*"
+  ],
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
