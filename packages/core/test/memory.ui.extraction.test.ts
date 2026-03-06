@@ -147,4 +147,68 @@ describe('buildExtractionContext', () => {
     });
     expect(ctx.toolManifest).toEqual(['tool_a', 'tool_b']);
   });
+
+  it('formats binding and tool lifecycle events into uiEvents', () => {
+    const events: UiMemoryEvent[] = [
+      makeEvent({
+        ts: 10,
+        type: 'binding.executed',
+        payloadJson: JSON.stringify({
+          record: {
+            bindingId: 'bind-1',
+            status: 'success',
+            toolId: 'save-profile',
+          },
+        }),
+      }),
+      makeEvent({
+        ts: 11,
+        type: 'tool.started',
+        payloadJson: JSON.stringify({
+          toolId: 'save-profile',
+          bindingId: 'bind-1',
+        }),
+      }),
+      makeEvent({
+        ts: 12,
+        type: 'tool.finished',
+        payloadJson: JSON.stringify({
+          toolId: 'save-profile',
+          durationMs: 48,
+        }),
+      }),
+      makeEvent({
+        ts: 13,
+        type: 'tool.failed',
+        payloadJson: JSON.stringify({
+          toolId: 'save-profile',
+          error: 'network timeout',
+        }),
+      }),
+    ];
+
+    const ctx = buildExtractionContext(events);
+    expect(ctx.uiEvents).toHaveLength(4);
+    expect(ctx.uiEvents[0]).toContain('binding:bind-1 status:success tool:save-profile');
+    expect(ctx.uiEvents[1]).toContain('tool.start save-profile binding:bind-1');
+    expect(ctx.uiEvents[2]).toContain('tool.finish save-profile duration:48');
+    expect(ctx.uiEvents[3]).toContain('tool.fail save-profile error:network timeout');
+  });
+
+  it('gracefully ignores malformed payloads for typed handlers', () => {
+    const events: UiMemoryEvent[] = [
+      makeEvent({
+        type: 'session.intent_updated',
+        payloadJson: '{not-json',
+      }),
+      makeEvent({
+        type: 'spec.decoded',
+        payloadJson: 'broken',
+      }),
+    ];
+
+    const ctx = buildExtractionContext(events);
+    expect(ctx.conversations).toHaveLength(0);
+    expect(ctx.workflowContext).toBeNull();
+  });
 });

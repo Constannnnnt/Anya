@@ -87,6 +87,18 @@ describe('TriggerManager', () => {
       expect(result).toEqual({ run: true, mode: 'async' });
     });
 
+    it('accepts percentage-like string ratios for context pressure', () => {
+      const trigger = new TriggerManager({
+        debounceMs: 0,
+        contextPressureRemainingRatioThreshold: 0.2,
+      });
+      const result = trigger.observe(makeEvent({
+        type: 'session.context_pressure',
+        payloadJson: JSON.stringify({ remainingRatio: '15' }),
+      }));
+      expect(result).toEqual({ run: true, mode: 'async' });
+    });
+
     it('does not fire on context pressure above thresholds', () => {
       const trigger = new TriggerManager({
         debounceMs: 0,
@@ -98,6 +110,15 @@ describe('TriggerManager', () => {
         payloadJson: JSON.stringify({ remainingRatio: 0.45, remainingTokens: 9000 }),
       }));
       expect(result.run).toBe(false);
+    });
+
+    it('does not fire on malformed context pressure payloads', () => {
+      const trigger = new TriggerManager({ debounceMs: 0 });
+      const result = trigger.observe(makeEvent({
+        type: 'session.context_pressure',
+        payloadJson: '{not-json',
+      }));
+      expect(result).toEqual({ run: false, mode: 'async' });
     });
 
     it('supports overriding context soft-trigger mode', () => {
@@ -164,4 +185,3 @@ describe('TriggerManager', () => {
     });
   });
 });
-

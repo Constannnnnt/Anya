@@ -75,5 +75,63 @@ describe('UiMemoryPipeline', () => {
     expect(runPrompt).toHaveBeenCalled();
     expect(maxConcurrent).toBe(1);
   });
-});
 
+  it('rolls back extracted artifacts and cursor when a later extraction phase fails', async () => {
+    const store = new InMemoryMemoryStore();
+    const trigger = new TriggerManager({ debounceMs: 0 });
+
+    let callCount = 0;
+    const runPrompt = vi.fn(async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        return JSON.stringify([
+          {
+            context: 'User explicitly prefers dark mode',
+            preference: 'Use dark theme',
+            categories: ['theme'],
+            signal_type: 'explicit',
+            confidence: 0.9,
+          },
+        ]);
+      }
+      throw new Error('episodic model failure');
+    });
+
+    const pipeline = new UiMemoryPipeline({
+      actorId: 'actor-1',
+      sessionId: 'session-1',
+      store,
+      trigger,
+      runPrompt,
+    });
+
+    const collector = new UiEventCollector(store, trigger, {
+      actorId: 'actor-1',
+      sessionId: 'session-1',
+    });
+
+    await collector.collect(
+      createRuntimeEvent(
+        'preference.explicit',
+        {
+          category: 'ui',
+          key: 'theme',
+          value: 'dark',
+          statement: 'Use dark theme',
+        },
+        {
+          id: 'evt-fail-1',
+          source: 'user',
+        },
+      ),
+    );
+
+    await expect(pipeline.flush('sync')).rejects.toThrow('episodic model failure');
+
+    const cursor = await store.getCursor('ui_memory');
+    const prefs = await store.findPreferences('actor-1');
+
+    expect(cursor).toBeNull();
+    expect(prefs).toHaveLength(0);
+  });
+});

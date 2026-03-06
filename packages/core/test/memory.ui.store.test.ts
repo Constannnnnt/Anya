@@ -180,6 +180,17 @@ describe('InMemoryMemoryStore', () => {
       expect(result.map((e) => e.id)).toEqual(['e2', 'e3']);
     });
 
+    it('returns all events when afterId is not found (cursor drift recovery)', async () => {
+      const store = new InMemoryMemoryStore();
+      await store.appendEvents([
+        makeEvent({ id: 'e1', ts: 1 }),
+        makeEvent({ id: 'e2', ts: 2 }),
+      ]);
+
+      const result = await store.readEvents({ afterId: 'missing' });
+      expect(result.map((e) => e.id)).toEqual(['e1', 'e2']);
+    });
+
     it('reads events before a cursor id (inclusive)', async () => {
       const store = new InMemoryMemoryStore();
       await store.appendEvents([
@@ -214,6 +225,21 @@ describe('InMemoryMemoryStore', () => {
 
       await store.appendEvents([makeEvent({ id: 'e2' })]);
       expect(await store.getLatestEventId()).toBe('e2');
+    });
+
+    it('defensively copies events on write and read', async () => {
+      const store = new InMemoryMemoryStore();
+      const event = makeEvent({ id: 'e1', payloadJson: '{"a":1}' });
+
+      await store.appendEvents([event]);
+      event.payloadJson = '{"a":999}';
+
+      const firstRead = await store.readEvents();
+      expect(firstRead[0].payloadJson).toBe('{"a":1}');
+
+      firstRead[0].payloadJson = '{"a":123}';
+      const secondRead = await store.readEvents();
+      expect(secondRead[0].payloadJson).toBe('{"a":1}');
     });
   });
 
@@ -273,6 +299,21 @@ describe('InMemoryMemoryStore', () => {
       const results = await store.findPreferences('actor-1', { limit: 2 });
       expect(results).toHaveLength(2);
     });
+
+    it('defensively copies preferences on write and read', async () => {
+      const store = new InMemoryMemoryStore();
+      const pref = makePref({ key: 'density', value: 'compact' });
+
+      await store.upsertPreference(pref);
+      pref.value = 'spacious';
+
+      const firstRead = await store.findPreferences('actor-1');
+      expect(firstRead[0].value).toBe('compact');
+
+      firstRead[0].value = 'mutated';
+      const secondRead = await store.findPreferences('actor-1');
+      expect(secondRead[0].value).toBe('compact');
+    });
   });
 
   // ── Interaction Patterns ────────────────────────────────────────────
@@ -307,6 +348,16 @@ describe('InMemoryMemoryStore', () => {
       expect(dashSuccess).toHaveLength(1);
       expect(dashSuccess[0].sequenceKey).toBe('a');
     });
+
+    it('filters by outcome only', async () => {
+      const store = new InMemoryMemoryStore();
+      await store.upsertPattern(makePattern({ sequenceKey: 'a', taskClass: 'dashboard', outcome: 'success' }));
+      await store.upsertPattern(makePattern({ sequenceKey: 'b', taskClass: 'form', outcome: 'failure' }));
+
+      const failures = await store.findPatterns('actor-1', { outcome: 'failure' });
+      expect(failures).toHaveLength(1);
+      expect(failures[0].sequenceKey).toBe('b');
+    });
   });
 
   // ── Episodes ────────────────────────────────────────────────────────
@@ -330,6 +381,30 @@ describe('InMemoryMemoryStore', () => {
       const results = await store.findEpisodes('actor-1', { intent: 'Edit profile' });
       expect(results).toHaveLength(1);
       expect(results[0].intent).toBe('Edit profile');
+    });
+
+    it('filters by sessionId', async () => {
+      const store = new InMemoryMemoryStore();
+      await store.upsertEpisode(makeEpisode({ id: 'ep1', sessionId: 's1' }));
+      await store.upsertEpisode(makeEpisode({ id: 'ep2', sessionId: 's2' }));
+
+      const results = await store.findEpisodes('actor-1', { sessionId: 's2' });
+      expect(results).toHaveLength(1);
+      expect(results[0].id).toBe('ep2');
+    });
+
+    it('filters by intent and sessionId intersection', async () => {
+      const store = new InMemoryMemoryStore();
+      await store.upsertEpisode(makeEpisode({ id: 'ep1', intent: 'Create dashboard', sessionId: 's1' }));
+      await store.upsertEpisode(makeEpisode({ id: 'ep2', intent: 'Create dashboard', sessionId: 's2' }));
+      await store.upsertEpisode(makeEpisode({ id: 'ep3', intent: 'Edit profile', sessionId: 's2' }));
+
+      const results = await store.findEpisodes('actor-1', {
+        intent: 'Create dashboard',
+        sessionId: 's2',
+      });
+      expect(results).toHaveLength(1);
+      expect(results[0].id).toBe('ep2');
     });
 
     it('sorts by createdTs descending', async () => {
@@ -387,6 +462,30 @@ describe('InMemoryMemoryStore', () => {
       await store.setCursor(cursor);
       expect(await store.getCursor('ui_memory')).toEqual(cursor);
     });
+
+    it('defensively copies cursor on write and read', async () => {
+      const store = new InMemoryMemoryStore();
+      const cursor: MemoryCursor = {
+        namespace: 'ui_memory',
+        lastProcessedEventId: 'evt-99',
+        lastProcessedTs: 10,
+        updatedTs: 11,
+      };
+
+      await store.setCursor(cursor);
+      cursor.lastProcessedEventId = 'evt-mutated';
+
+      const firstRead = await store.getCursor('ui_memory');
+      expect(firstRead?.lastProcessedEventId).toBe('evt-99');
+
+      if (!firstRead) {
+        throw new Error('expected cursor to exist');
+      }
+
+      firstRead.lastProcessedEventId = 'evt-read-mutate';
+      const secondRead = await store.getCursor('ui_memory');
+      expect(secondRead?.lastProcessedEventId).toBe('evt-99');
+    });
   });
 
   // ── Transaction ─────────────────────────────────────────────────────
@@ -410,6 +509,110 @@ describe('InMemoryMemoryStore', () => {
       const prefs = await store.findPreferences('actor-1');
       expect(prefs).toHaveLength(1);
       expect(await store.getCursor('ui_memory')).toEqual(cursor);
+    });
+
+    it('rolls back events and preserves cursor-drift behavior after failure', async () => {
+      const store = new InMemoryMemoryStore();
+      await store.appendEvents([
+        makeEvent({ id: 'e1', ts: 1 }),
+        makeEvent({ id: 'e2', ts: 2 }),
+      ]);
+
+      await expect(
+        store.transaction(async (tx) => {
+          await tx.appendEvents([makeEvent({ id: 'e3', ts: 3 })]);
+          throw new Error('boom');
+        }),
+      ).rejects.toThrow('boom');
+
+      const all = await store.readEvents();
+      expect(all.map((e) => e.id)).toEqual(['e1', 'e2']);
+
+      const afterMissing = await store.readEvents({ afterId: 'e3' });
+      expect(afterMissing.map((e) => e.id)).toEqual(['e1', 'e2']);
+    });
+
+    it('rolls back preference indexes after failure', async () => {
+      const store = new InMemoryMemoryStore();
+
+      await expect(
+        store.transaction(async (tx) => {
+          await tx.upsertPreference(
+            makePref({
+              category: 'layout',
+              key: 'density',
+              value: 'compact',
+            }),
+          );
+          throw new Error('rollback-pref');
+        }),
+      ).rejects.toThrow('rollback-pref');
+
+      const actorPrefs = await store.findPreferences('actor-1');
+      const categoryPrefs = await store.findPreferences('actor-1', {
+        category: 'layout',
+      });
+      expect(actorPrefs).toHaveLength(0);
+      expect(categoryPrefs).toHaveLength(0);
+    });
+
+    it('rolls back pattern indexes after failure', async () => {
+      const store = new InMemoryMemoryStore();
+
+      await expect(
+        store.transaction(async (tx) => {
+          await tx.upsertPattern(
+            makePattern({
+              sequenceKey: 'rollback-seq',
+              taskClass: 'dashboard',
+              outcome: 'failure',
+            }),
+          );
+          throw new Error('rollback-pattern');
+        }),
+      ).rejects.toThrow('rollback-pattern');
+
+      const actorPatterns = await store.findPatterns('actor-1');
+      const outcomePatterns = await store.findPatterns('actor-1', {
+        outcome: 'failure',
+      });
+      const taskPatterns = await store.findPatterns('actor-1', {
+        taskClass: 'dashboard',
+      });
+      expect(actorPatterns).toHaveLength(0);
+      expect(outcomePatterns).toHaveLength(0);
+      expect(taskPatterns).toHaveLength(0);
+    });
+
+    it('rolls back episode and reflection indexes after failure', async () => {
+      const store = new InMemoryMemoryStore();
+
+      await expect(
+        store.transaction(async (tx) => {
+          await tx.upsertEpisode(
+            makeEpisode({
+              id: 'ep-rollback',
+              intent: 'Create dashboard',
+              sessionId: 'rollback-session',
+            }),
+          );
+          await tx.upsertReflection(
+            makeReflection({
+              title: 'Rollback reflection',
+            }),
+          );
+          throw new Error('rollback-episode-reflection');
+        }),
+      ).rejects.toThrow('rollback-episode-reflection');
+
+      const episodesByActor = await store.findEpisodes('actor-1');
+      const episodesBySession = await store.findEpisodes('actor-1', {
+        sessionId: 'rollback-session',
+      });
+      const reflectionsByActor = await store.findReflections('actor-1');
+      expect(episodesByActor).toHaveLength(0);
+      expect(episodesBySession).toHaveLength(0);
+      expect(reflectionsByActor).toHaveLength(0);
     });
   });
 
@@ -437,6 +640,20 @@ describe('InMemoryMemoryStore', () => {
       expect(snapshot.episodes).toHaveLength(1);
       expect(snapshot.reflections).toHaveLength(1);
       expect(snapshot.cursors).toHaveLength(1);
+    });
+
+    it('returns defensive copies in export snapshot', async () => {
+      const store = new InMemoryMemoryStore();
+      await store.appendEvents([makeEvent({ id: 'e1', payloadJson: '{"v":1}' })]);
+      await store.upsertPreference(makePref({ key: 'k1', value: 'v1' }));
+
+      const snapshot = await store.exportJson();
+      snapshot.events[0].payloadJson = '{"v":999}';
+      snapshot.preferences[0].value = 'mutated';
+
+      const verify = await store.exportJson();
+      expect(verify.events[0].payloadJson).toBe('{"v":1}');
+      expect(verify.preferences[0].value).toBe('v1');
     });
   });
 });

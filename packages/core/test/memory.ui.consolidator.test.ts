@@ -168,7 +168,7 @@ describe('ConsolidationManager', () => {
       ];
 
       const result = await consolidator.consolidatePreferences(
-        candidates, 'actor-1', store, 'evt-1', 1000,
+        candidates, 'actor-1', store,
       );
 
       expect(result.added).toBe(1);
@@ -208,7 +208,7 @@ describe('ConsolidationManager', () => {
       ];
 
       const result = await consolidator.consolidatePreferences(
-        candidates, 'actor-1', store, 'evt-2', 2000,
+        candidates, 'actor-1', store,
       );
 
       expect(result.updated).toBe(1);
@@ -230,7 +230,7 @@ describe('ConsolidationManager', () => {
       ];
 
       const result = await consolidator.consolidatePreferences(
-        candidates, 'actor-1', store, 'evt-1', 1000,
+        candidates, 'actor-1', store,
       );
 
       expect(result.skipped).toBe(1);
@@ -238,7 +238,7 @@ describe('ConsolidationManager', () => {
       expect(prefs).toHaveLength(0);
     });
 
-    it('advances cursor on successful consolidation', async () => {
+    it('does not advance cursor directly during preference consolidation', async () => {
       const store = new InMemoryMemoryStore();
       const candidates: ExtractedPreferenceCandidate[] = [
         {
@@ -251,13 +251,52 @@ describe('ConsolidationManager', () => {
       ];
 
       await consolidator.consolidatePreferences(
-        candidates, 'actor-1', store, 'evt-5', 5000,
+        candidates, 'actor-1', store,
       );
 
       const cursor = await store.getCursor('ui_memory');
-      expect(cursor).not.toBeNull();
-      expect(cursor!.lastProcessedEventId).toBe('evt-5');
-      expect(cursor!.lastProcessedTs).toBe(5000);
+      expect(cursor).toBeNull();
+    });
+
+    it('queries each category once per consolidation batch', async () => {
+      const store = new InMemoryMemoryStore();
+      const findPreferencesSpy = vi.spyOn(store, 'findPreferences');
+      const candidates: ExtractedPreferenceCandidate[] = [
+        {
+          context: 'signal-1',
+          preference: 'Use dark theme',
+          categories: ['theme'],
+          signal_type: 'explicit',
+          confidence: 0.9,
+        },
+        {
+          context: 'signal-2',
+          preference: 'Use high-contrast colors',
+          categories: ['theme'],
+          signal_type: 'explicit',
+          confidence: 0.8,
+        },
+        {
+          context: 'signal-3',
+          preference: 'Compact card spacing',
+          categories: ['layout'],
+          signal_type: 'implicit',
+          confidence: 0.7,
+        },
+      ];
+
+      await consolidator.consolidatePreferences(
+        candidates, 'actor-1', store,
+      );
+
+      const categoryCalls = findPreferencesSpy.mock.calls
+        .map(([, options]) => options?.category)
+        .filter((category): category is string => typeof category === 'string');
+      const themeCalls = categoryCalls.filter((category) => category === 'theme');
+      const layoutCalls = categoryCalls.filter((category) => category === 'layout');
+
+      expect(themeCalls).toHaveLength(1);
+      expect(layoutCalls).toHaveLength(1);
     });
   });
 
