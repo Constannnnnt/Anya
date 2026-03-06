@@ -7,6 +7,8 @@
 
 import type { MemoryStore } from './store';
 import type { MemoryCursor, UiMemoryEvent } from './schemas';
+import { asObject, asString, parseJsonObject } from './payload';
+import type { JsonObject } from './payload';
 
 // ─── Configuration ───────────────────────────────────────────────────────
 
@@ -24,6 +26,18 @@ export interface ExtractionContext {
   workflowContext: string | null;
   toolManifest: string[];
 }
+
+interface ExtractionContextAccumulator {
+  conversations: string[];
+  uiEvents: string[];
+  workflowContext: string | null;
+}
+
+type EventContextStrategy = (
+  event: UiMemoryEvent,
+  context: ExtractionContextAccumulator,
+  getPayload: () => JsonObject | null,
+) => void;
 
 // ─── Extraction Window Builder ───────────────────────────────────────────
 
@@ -102,107 +116,129 @@ export function buildExtractionContext(
     toolManifest?: string[];
   },
 ): ExtractionContext {
-  const conversations: string[] = [];
-  const uiEvents: string[] = [];
-  let workflowContext: string | null = null;
+  const context: ExtractionContextAccumulator = {
+    conversations: [],
+    uiEvents: [],
+    workflowContext: null,
+  };
 
   for (const event of events) {
-    switch (event.type) {
-      case 'session.intent_updated': {
-        const payload = safeParsePayload(event.payloadJson);
-        if (payload?.userIntent) {
-          conversations.push(
-            `[${event.source}] intent: ${payload.userIntent}`,
-          );
-        }
-        break;
-      }
-      case 'interaction.recorded': {
-        const payload = safeParsePayload(event.payloadJson);
-        if (payload?.record) {
-          const r = payload.record;
-          uiEvents.push(
-            `[${event.ts}] ${r.componentName}#${r.elementId} → ${r.action}${r.semanticDescription ? ': ' + r.semanticDescription : ''}`,
-          );
-        }
-        break;
-      }
-      case 'binding.executed': {
-        const payload = safeParsePayload(event.payloadJson);
-        const record = payload?.record;
-        if (record && typeof record === 'object') {
-          const toolId = typeof record.toolId === 'string' ? record.toolId : 'none';
-          const status = typeof record.status === 'string' ? record.status : 'unknown';
-          const bindingId = typeof record.bindingId === 'string' ? record.bindingId : 'unknown';
-          uiEvents.push(
-            `[${event.ts}] binding:${bindingId} status:${status} tool:${toolId}`,
-          );
-        }
-        break;
-      }
-      case 'tool.started': {
-        const payload = safeParsePayload(event.payloadJson);
-        uiEvents.push(
-          `[${event.ts}] tool.start ${String(payload?.toolId ?? 'unknown')} binding:${String(payload?.bindingId ?? 'n/a')}`,
-        );
-        break;
-      }
-      case 'tool.finished': {
-        const payload = safeParsePayload(event.payloadJson);
-        uiEvents.push(
-          `[${event.ts}] tool.finish ${String(payload?.toolId ?? 'unknown')} duration:${String(payload?.durationMs ?? 'n/a')}`,
-        );
-        break;
-      }
-      case 'tool.failed': {
-        const payload = safeParsePayload(event.payloadJson);
-        uiEvents.push(
-          `[${event.ts}] tool.fail ${String(payload?.toolId ?? 'unknown')} error:${truncate(String(payload?.error ?? 'unknown'), 120)}`,
-        );
-        break;
-      }
-      case 'qa.passed':
-      case 'qa.failed': {
-        uiEvents.push(`[${event.ts}] ${event.type}: ${truncate(event.payloadJson, 160)}`);
-        break;
-      }
-      case 'session.context_compacted':
-      case 'session.context_pressure': {
-        uiEvents.push(`[${event.ts}] ${event.type}: ${truncate(event.payloadJson, 160)}`);
-        break;
-      }
-      case 'spec.decoded': {
-        const payload = safeParsePayload(event.payloadJson);
-        if (payload?.spec?.skill) {
-          workflowContext = payload.spec.skill;
-        }
-        break;
-      }
-      default: {
-        // Include other events as generic entries
-        uiEvents.push(`[${event.ts}] ${event.type}: ${truncate(event.payloadJson, 200)}`);
-      }
+    const strategy = EVENT_CONTEXT_STRATEGIES[event.type];
+    if (!strategy) {
+      // Include unknown events as generic entries.
+      context.uiEvents.push(
+        `[${event.ts}] ${event.type}: ${truncate(event.payloadJson, 200)}`,
+      );
+      continue;
     }
+
+    let parsedPayload: JsonObject | null | undefined;
+    strategy(event, context, () => {
+      if (parsedPayload === undefined) {
+        parsedPayload = parseJsonObject(event.payloadJson);
+      }
+      return parsedPayload;
+    });
   }
 
   return {
     events,
-    conversations,
-    uiEvents,
-    workflowContext,
+    conversations: context.conversations,
+    uiEvents: context.uiEvents,
+    workflowContext: context.workflowContext,
     toolManifest: opts?.toolManifest ?? [],
   };
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
-function safeParsePayload(json: string): Record<string, any> | null {
-  try {
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
-}
+const EVENT_CONTEXT_STRATEGIES: Record<string, EventContextStrategy> = {
+  'session.intent_updated': (event, context, getPayload) => {
+    const payload = getPayload();
+    const userIntent = asString(payload?.userIntent);
+    if (userIntent) {
+      context.conversations.push(`[${event.source}] intent: ${userIntent}`);
+    }
+  },
+  'interaction.recorded': (event, context, getPayload) => {
+    const payload = getPayload();
+    const record = asObject(payload?.record);
+    const action = asString(record?.action);
+    if (!action) return;
+    const componentName = asString(record?.componentName) ?? 'unknown';
+    const elementId = asString(record?.elementId) ?? 'unknown';
+    const semanticDescription = asString(record?.semanticDescription);
+    context.uiEvents.push(
+      `[${event.ts}] ${componentName}#${elementId} → ${action}${semanticDescription ? ': ' + semanticDescription : ''}`,
+    );
+  },
+  'binding.executed': (event, context, getPayload) => {
+    const payload = getPayload();
+    const record = asObject(payload?.record);
+    if (!record) return;
+    const toolId = asString(record.toolId) ?? 'none';
+    const status = asString(record.status) ?? 'unknown';
+    const bindingId = asString(record.bindingId) ?? 'unknown';
+    context.uiEvents.push(
+      `[${event.ts}] binding:${bindingId} status:${status} tool:${toolId}`,
+    );
+  },
+  'tool.started': (event, context, getPayload) => {
+    const payload = getPayload();
+    const toolId = asString(payload?.toolId) ?? 'unknown';
+    const bindingId = asString(payload?.bindingId) ?? 'n/a';
+    context.uiEvents.push(
+      `[${event.ts}] tool.start ${toolId} binding:${bindingId}`,
+    );
+  },
+  'tool.finished': (event, context, getPayload) => {
+    const payload = getPayload();
+    const toolId = asString(payload?.toolId) ?? 'unknown';
+    const durationValue = payload && 'durationMs' in payload
+      ? payload.durationMs
+      : undefined;
+    const duration = durationValue === undefined ? 'n/a' : String(durationValue);
+    context.uiEvents.push(
+      `[${event.ts}] tool.finish ${toolId} duration:${duration}`,
+    );
+  },
+  'tool.failed': (event, context, getPayload) => {
+    const payload = getPayload();
+    const toolId = asString(payload?.toolId) ?? 'unknown';
+    const error = truncate(String(payload?.error ?? 'unknown'), 120);
+    context.uiEvents.push(
+      `[${event.ts}] tool.fail ${toolId} error:${error}`,
+    );
+  },
+  'qa.passed': (event, context) => {
+    context.uiEvents.push(
+      `[${event.ts}] ${event.type}: ${truncate(event.payloadJson, 160)}`,
+    );
+  },
+  'qa.failed': (event, context) => {
+    context.uiEvents.push(
+      `[${event.ts}] ${event.type}: ${truncate(event.payloadJson, 160)}`,
+    );
+  },
+  'session.context_compacted': (event, context) => {
+    context.uiEvents.push(
+      `[${event.ts}] ${event.type}: ${truncate(event.payloadJson, 160)}`,
+    );
+  },
+  'session.context_pressure': (event, context) => {
+    context.uiEvents.push(
+      `[${event.ts}] ${event.type}: ${truncate(event.payloadJson, 160)}`,
+    );
+  },
+  'spec.decoded': (event, context, getPayload) => {
+    const payload = getPayload();
+    const spec = asObject(payload?.spec);
+    const skill = asString(spec?.skill);
+    if (skill) {
+      context.workflowContext = skill;
+    }
+  },
+};
 
 function truncate(str: string, maxLen: number): string {
   return str.length > maxLen ? str.slice(0, maxLen) + '…' : str;

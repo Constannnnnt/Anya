@@ -34,6 +34,14 @@ export interface IndexedDbMemoryStoreOptions {
   dbVersion?: number;
 }
 
+function isInvalidStateDomException(error: unknown): boolean {
+  return (
+    typeof DOMException !== 'undefined'
+    && error instanceof DOMException
+    && error.name === 'InvalidStateError'
+  );
+}
+
 export class IndexedDbMemoryStore implements MemoryStore {
   private readonly memory = new InMemoryMemoryStore();
   private readonly options: Required<IndexedDbMemoryStoreOptions>;
@@ -210,8 +218,8 @@ export class IndexedDbMemoryStore implements MemoryStore {
         };
         request.onerror = () => reject(request.error ?? new Error('Failed to read IndexedDB snapshot.'));
       });
-    } catch (err: any) {
-      if (err instanceof DOMException && err.name === 'InvalidStateError') {
+    } catch (err: unknown) {
+      if (isInvalidStateDomException(err)) {
         this.db = null; // force reconnect on next try
       }
       throw err;
@@ -233,12 +241,11 @@ export class IndexedDbMemoryStore implements MemoryStore {
         tx.onerror = () => reject(tx.error ?? new Error('Failed to write IndexedDB snapshot.'));
         tx.onabort = () => reject(tx.error ?? new Error('IndexedDB snapshot write aborted.'));
       });
-    } catch (err: any) {
-      if (err instanceof DOMException && err.name === 'InvalidStateError') {
+    } catch (err: unknown) {
+      if (isInvalidStateDomException(err)) {
         this.db = null; // force reconnect next time
       }
       throw err;
     }
   }
 }
-

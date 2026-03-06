@@ -9,6 +9,8 @@
  */
 
 import type { UiMemoryEvent } from './schemas';
+import { asFiniteNumber, asString, parseJsonObject } from './payload';
+import type { JsonObject } from './payload';
 
 export interface TriggerConfig {
   /** Debounce window in milliseconds for soft triggers. Default: 12000 */
@@ -63,28 +65,17 @@ const DEFAULT_HARD_TRIGGER_MODES: Record<HardTriggerType, 'sync' | 'async'> = {
 /**
  * Detects task-end via session.status_set -> idle/waiting after a non-idle/waiting state.
  */
-function isTaskEndTransition(event: UiMemoryEvent, previousStatus: string | null): boolean {
-  if (event.type !== 'session.status_set') return false;
-  try {
-    const payload = JSON.parse(event.payloadJson);
-    const isEndingState = payload.status === 'idle' || payload.status === 'waiting';
-    const isFromActiveState = previousStatus !== null && previousStatus !== 'idle' && previousStatus !== 'waiting';
-    if (isEndingState && isFromActiveState) {
-      return true;
-    }
-  } catch {
-    // Ignore malformed payload.
-  }
-  return false;
-}
-
-function toFiniteNumber(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return null;
+function isTaskEndTransition(
+  payload: JsonObject | null,
+  previousStatus: string | null,
+): boolean {
+  const status = asString(payload?.status);
+  const isEndingState = status === 'idle' || status === 'waiting';
+  const isFromActiveState =
+    previousStatus !== null
+    && previousStatus !== 'idle'
+    && previousStatus !== 'waiting';
+  return isEndingState && isFromActiveState;
 }
 
 function normalizeRatio(value: number): number {
@@ -138,9 +129,19 @@ export class TriggerManager {
    * Observe a new event and evaluate hard/soft trigger conditions.
    */
   observe(event: UiMemoryEvent): TriggerResult {
+    let parsedPayload: JsonObject | null | undefined;
+    const getPayload = (): JsonObject | null => {
+      if (parsedPayload === undefined) {
+        parsedPayload = parseJsonObject(event.payloadJson);
+      }
+      return parsedPayload;
+    };
+
     if (event.type === 'session.status_set') {
-      const isTaskEnd = isTaskEndTransition(event, this.previousSessionStatus);
-      this.previousSessionStatus = this.extractStatus(event.payloadJson) ?? this.previousSessionStatus;
+      const payload = getPayload();
+      const isTaskEnd = isTaskEndTransition(payload, this.previousSessionStatus);
+      this.previousSessionStatus =
+        this.extractStatus(payload) ?? this.previousSessionStatus;
       if (isTaskEnd) {
         if (this.config.disabledHardTriggers.has('task.ended')) {
           return { run: false, mode: this.config.hardTriggerModes['task.ended'] };
@@ -177,7 +178,7 @@ export class TriggerManager {
     }
 
     if (event.type === 'session.context_pressure') {
-      const shouldRun = this.matchesContextPressureThreshold(event.payloadJson);
+      const shouldRun = this.matchesContextPressureThreshold(getPayload());
       const result: TriggerResult = {
         run: shouldRun && this.softTriggerAllowed(event.ts),
         mode: this.config.contextPressureMode,
@@ -230,33 +231,23 @@ export class TriggerManager {
     return true;
   }
 
-  private extractStatus(payloadJson: string): string | null {
-    try {
-      const payload = JSON.parse(payloadJson);
-      return typeof payload.status === 'string' ? payload.status : null;
-    } catch {
-      return null;
-    }
+  private extractStatus(payload: JsonObject | null): string | null {
+    return asString(payload?.status);
   }
 
-  private matchesContextPressureThreshold(payloadJson: string): boolean {
-    try {
-      const payload = JSON.parse(payloadJson) as Record<string, unknown>;
-      const rawRatio = toFiniteNumber(payload.remainingRatio);
-      const ratio = rawRatio === null ? null : normalizeRatio(rawRatio);
-      const tokens = toFiniteNumber(payload.remainingTokens);
+  private matchesContextPressureThreshold(payload: JsonObject | null): boolean {
+    const rawRatio = asFiniteNumber(payload?.remainingRatio);
+    const ratio = rawRatio === null ? null : normalizeRatio(rawRatio);
+    const tokens = asFiniteNumber(payload?.remainingTokens);
 
-      const ratioTriggered = ratio !== null
-        && ratio >= 0
-        && ratio <= this.config.contextPressureRemainingRatioThreshold;
-      const tokensTriggered = tokens !== null
-        && tokens >= 0
-        && tokens <= this.config.contextPressureRemainingTokensThreshold;
+    const ratioTriggered = ratio !== null
+      && ratio >= 0
+      && ratio <= this.config.contextPressureRemainingRatioThreshold;
+    const tokensTriggered = tokens !== null
+      && tokens >= 0
+      && tokens <= this.config.contextPressureRemainingTokensThreshold;
 
-      return ratioTriggered || tokensTriggered;
-    } catch {
-      return false;
-    }
+    return ratioTriggered || tokensTriggered;
   }
 
   private fire(result: TriggerResult): void {

@@ -33,6 +33,27 @@ export interface SQLiteMemoryStoreOptions {
   filename?: string;
 }
 
+interface SqliteStatement {
+  get(...params: unknown[]): unknown;
+  run(...params: unknown[]): void;
+}
+
+interface SqliteDatabase {
+  exec(sql: string): void;
+  prepare(sql: string): SqliteStatement;
+  close(): void;
+}
+
+interface NodeSqliteModule {
+  DatabaseSync: new (filename: string) => SqliteDatabase;
+}
+
+function isNodeSqliteModule(value: unknown): value is NodeSqliteModule {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as { DatabaseSync?: unknown };
+  return typeof candidate.DatabaseSync === 'function';
+}
+
 /**
  * Snapshot-backed SQLite adapter.
  * Uses Node's built-in experimental `node:sqlite` module.
@@ -40,7 +61,7 @@ export interface SQLiteMemoryStoreOptions {
 export class SQLiteMemoryStore implements MemoryStore {
   private readonly memory = new InMemoryMemoryStore();
   private readonly options: Required<SQLiteMemoryStoreOptions>;
-  private db: any;
+  private db: SqliteDatabase | null = null;
   private readonly ready: Promise<void>;
 
   constructor(options?: SQLiteMemoryStoreOptions) {
@@ -181,7 +202,11 @@ export class SQLiteMemoryStore implements MemoryStore {
 
   private async persist(): Promise<void> {
     const snapshot = await this.memory.exportJson();
-    this.db
+    const db = this.db;
+    if (!db) {
+      throw new Error('[SQLiteMemoryStore] Database is not initialized.');
+    }
+    db
       .prepare(`
         INSERT INTO memory_snapshot (id, data, updated_ts)
         VALUES (?, ?, ?)
@@ -197,8 +222,12 @@ export class SQLiteMemoryStore implements MemoryStore {
  * Load node:sqlite without exposing a static import specifier.
  * This prevents browser bundlers from trying to bundle node-only modules.
  */
-async function loadNodeSqlite(): Promise<any> {
+async function loadNodeSqlite(): Promise<NodeSqliteModule> {
   const sqliteSpecifier = `node:${'sqlite'}`;
   // Node-only path; keep unresolved in browser builds.
-  return import(/* @vite-ignore */ sqliteSpecifier);
+  const loaded: unknown = await import(/* @vite-ignore */ sqliteSpecifier);
+  if (!isNodeSqliteModule(loaded)) {
+    throw new Error('[SQLiteMemoryStore] Failed to load node:sqlite DatabaseSync module.');
+  }
+  return loaded;
 }

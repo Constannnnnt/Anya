@@ -6,6 +6,7 @@
  */
 
 import type { ConsolidatedEpisode, UiMemoryEvent } from './schemas';
+import { asObject, asString, parseJsonObject } from './payload';
 
 export interface PatternCandidate {
   taskClass: string;
@@ -44,24 +45,22 @@ function buildSequence(events: UiMemoryEvent[]): string[] {
 
   for (const event of events) {
     if (event.type === 'interaction.recorded') {
-      const payload = safeParsePayload(event.payloadJson);
-      const record = payload?.record;
-      const action = typeof record?.action === 'string' ? record.action : null;
+      const payload = parseJsonObject(event.payloadJson);
+      const record = asObject(payload?.record);
+      const action = asString(record?.action);
       if (action) sequence.push(`ui:${action}`);
       continue;
     }
 
     if (event.type === 'binding.executed') {
-      const payload = safeParsePayload(event.payloadJson);
-      const record = payload?.record;
-      if (!record || typeof record !== 'object') continue;
+      const payload = parseJsonObject(event.payloadJson);
+      const record = asObject(payload?.record);
+      if (!record) continue;
 
-      const toolId = typeof record.toolId === 'string' ? record.toolId : null;
-      const status = typeof record.status === 'string' ? record.status : 'unknown';
-      const resultType =
-        record.result && typeof record.result === 'object' && typeof (record.result as Record<string, unknown>).type === 'string'
-          ? String((record.result as Record<string, unknown>).type)
-          : null;
+      const toolId = asString(record.toolId);
+      const status = asString(record.status) ?? 'unknown';
+      const result = asObject(record.result);
+      const resultType = asString(result?.type);
 
       if (toolId) {
         sequence.push(`tool:${toolId}:${status}`);
@@ -78,7 +77,7 @@ function buildSequence(events: UiMemoryEvent[]): string[] {
     }
 
     if (event.type === 'tool.finished') {
-      const payload = safeParsePayload(event.payloadJson);
+      const payload = parseJsonObject(event.payloadJson);
       const toolId = asString(payload?.toolId);
       if (toolId) {
         sequence.push(`tool:${toolId}:success`);
@@ -87,7 +86,7 @@ function buildSequence(events: UiMemoryEvent[]): string[] {
     }
 
     if (event.type === 'tool.failed') {
-      const payload = safeParsePayload(event.payloadJson);
+      const payload = parseJsonObject(event.payloadJson);
       const toolId = asString(payload?.toolId);
       if (toolId) {
         sequence.push(`tool:${toolId}:error`);
@@ -109,13 +108,14 @@ function deriveTaskClass(
   for (let i = events.length - 1; i >= 0; i -= 1) {
     const event = events[i];
     if (event.type === 'session.intent_updated') {
-      const payload = safeParsePayload(event.payloadJson);
+      const payload = parseJsonObject(event.payloadJson);
       const candidate = normalizeTaskClass(asString(payload?.userIntent));
       if (candidate) return candidate;
     }
     if (event.type === 'spec.decoded') {
-      const payload = safeParsePayload(event.payloadJson);
-      const candidate = normalizeTaskClass(asString(payload?.spec?.skill));
+      const payload = parseJsonObject(event.payloadJson);
+      const spec = asObject(payload?.spec);
+      const candidate = normalizeTaskClass(asString(spec?.skill));
       if (candidate) return candidate;
     }
   }
@@ -134,8 +134,9 @@ function deriveOutcome(
   for (let i = events.length - 1; i >= 0; i -= 1) {
     const event = events[i];
     if (event.type === 'binding.executed') {
-      const payload = safeParsePayload(event.payloadJson);
-      const status = asString(payload?.record?.status);
+      const payload = parseJsonObject(event.payloadJson);
+      const record = asObject(payload?.record);
+      const status = asString(record?.status);
       if (status === 'error') return 'failure';
       continue;
     }
@@ -164,7 +165,7 @@ function dedupeConsecutive(sequence: string[]): string[] {
   return deduped;
 }
 
-function normalizeTaskClass(value: string | undefined): string | null {
+function normalizeTaskClass(value: string | null | undefined): string | null {
   if (!value) return null;
   const normalized = value
     .toLowerCase()
@@ -174,16 +175,4 @@ function normalizeTaskClass(value: string | undefined): string | null {
     .slice(0, 6)
     .join('_');
   return normalized || null;
-}
-
-function asString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
-}
-
-function safeParsePayload(json: string): Record<string, any> | null {
-  try {
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
 }

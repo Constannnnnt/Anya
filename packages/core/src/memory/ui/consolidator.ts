@@ -9,13 +9,13 @@ import type { MemoryStore } from './store';
 import type {
   PreferenceMemory,
   InteractionPattern,
-  MemoryCursor,
   Episode,
   Reflection,
   ExtractedPreferenceCandidate,
   ConsolidatedEpisode,
   ReflectionSynthesis,
 } from './schemas';
+import { nextGeneratedId } from '../../id';
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
@@ -39,111 +39,112 @@ export class ConsolidationManager {
   /**
    * Consolidate preference candidates against existing store records.
    * For each candidate: find existing by (actor, category, key), decide
-   * AddMemory / UpdateMemory / SkipMemory, then upsert + advance cursor.
+   * AddMemory / UpdateMemory / SkipMemory, then upsert records.
    */
   async consolidatePreferences(
     candidates: ExtractedPreferenceCandidate[],
     actorId: string,
     store: MemoryStore,
-    latestEventId: string,
-    latestEventTs: number,
   ): Promise<ConsolidationResult> {
     const result: ConsolidationResult = { added: 0, updated: 0, skipped: 0 };
     const now = Date.now();
+    const categoryPreferenceIndex = new Map<string, Map<string, PreferenceMemory>>();
 
-    await store.transaction(async (tx) => {
-      for (const candidate of candidates) {
-        // Skip low-confidence or empty candidates
-        if (candidate.confidence < 0.3 || !candidate.preference.trim()) {
+    const getCategoryIndex = async (
+      category: string,
+    ): Promise<Map<string, PreferenceMemory>> => {
+      const cached = categoryPreferenceIndex.get(category);
+      if (cached) return cached;
+      const existing = await store.findPreferences(actorId, { category });
+      const index = new Map(existing.map((pref) => [pref.key, pref]));
+      categoryPreferenceIndex.set(category, index);
+      return index;
+    };
+
+    for (const candidate of candidates) {
+      // Skip low-confidence or empty candidates
+      if (candidate.confidence < 0.3 || !candidate.preference.trim()) {
+        result.skipped++;
+        continue;
+      }
+
+      for (const category of candidate.categories) {
+        const key = this.deriveKey(candidate.preference, category);
+
+        // Enforce tooling key space
+        if (category === 'tooling' && !VALID_TOOLING_KEYS.has(key)) {
           result.skipped++;
           continue;
         }
 
-        for (const category of candidate.categories) {
-          const key = this.deriveKey(candidate.preference, category);
+        const categoryIndex = await getCategoryIndex(category);
+        const existing = categoryIndex.get(key);
+        const match = existing?.value === candidate.preference ? existing : null;
 
-          // Enforce tooling key space
-          if (category === 'tooling' && !VALID_TOOLING_KEYS.has(key)) {
-            result.skipped++;
-            continue;
-          }
+        if (match) {
+          // UpdateMemory: bump support + confidence + timestamp
+          const updated: PreferenceMemory = {
+            ...match,
+            confidence: Math.min(
+              1.0,
+              match.confidence * 0.7 + candidate.confidence * 0.3,
+            ),
+            support: match.support + 1,
+            lastSeenTs: now,
+            signalType: candidate.signal_type,
+            status:
+              match.status === 'candidate' && match.support + 1 >= 3
+                ? 'active'
+                : match.status,
+          };
+          await store.upsertPreference(updated);
+          categoryIndex.set(key, updated);
+          result.updated++;
+        } else {
+          // Check for semantic overlap with existing keys
+          const semanticMatch = existing;
 
-          // Find existing
-          const existing = await tx.findPreferences(actorId, { category });
-          const match = existing.find(
-            (p) => p.key === key && p.value === candidate.preference,
-          );
-
-          if (match) {
-            // UpdateMemory: bump support + confidence + timestamp
-            const updated: PreferenceMemory = {
-              ...match,
-              confidence: Math.min(
-                1.0,
-                match.confidence * 0.7 + candidate.confidence * 0.3,
-              ),
-              support: match.support + 1,
-              lastSeenTs: now,
-              signalType: candidate.signal_type,
-              status:
-                match.status === 'candidate' && match.support + 1 >= 3
-                  ? 'active'
-                  : match.status,
-            };
-            await tx.upsertPreference(updated);
-            result.updated++;
-          } else {
-            // Check for semantic overlap with existing keys
-            const semanticMatch = existing.find((p) => p.key === key);
-
-            if (semanticMatch) {
-              // UpdateMemory: replace value with better detail
-              if (candidate.confidence >= semanticMatch.confidence) {
-                const updated: PreferenceMemory = {
-                  ...semanticMatch,
-                  value: candidate.preference,
-                  statement: candidate.preference,
-                  confidence: candidate.confidence,
-                  support: semanticMatch.support + 1,
-                  lastSeenTs: now,
-                  signalType: candidate.signal_type,
-                };
-                await tx.upsertPreference(updated);
-                result.updated++;
-              } else {
-                result.skipped++;
-              }
-            } else {
-              // AddMemory: new preference
-              const pref: PreferenceMemory = {
-                id: `pref-${now}-${Math.random().toString(36).slice(2, 8)}`,
-                actorId,
-                category,
-                key,
+          if (semanticMatch) {
+            // UpdateMemory: replace value with better detail
+            if (candidate.confidence >= semanticMatch.confidence) {
+              const updated: PreferenceMemory = {
+                ...semanticMatch,
                 value: candidate.preference,
                 statement: candidate.preference,
-                signalType: candidate.signal_type,
                 confidence: candidate.confidence,
-                support: 1,
-                firstSeenTs: now,
+                support: semanticMatch.support + 1,
                 lastSeenTs: now,
-                status: candidate.confidence >= 0.8 ? 'active' : 'candidate',
+                signalType: candidate.signal_type,
               };
-              await tx.upsertPreference(pref);
-              result.added++;
+              await store.upsertPreference(updated);
+              categoryIndex.set(key, updated);
+              result.updated++;
+            } else {
+              result.skipped++;
             }
+          } else {
+            // AddMemory: new preference
+            const pref: PreferenceMemory = {
+              id: nextGeneratedId('pref'),
+              actorId,
+              category,
+              key,
+              value: candidate.preference,
+              statement: candidate.preference,
+              signalType: candidate.signal_type,
+              confidence: candidate.confidence,
+              support: 1,
+              firstSeenTs: now,
+              lastSeenTs: now,
+              status: candidate.confidence >= 0.8 ? 'active' : 'candidate',
+            };
+            await store.upsertPreference(pref);
+            categoryIndex.set(key, pref);
+            result.added++;
           }
         }
       }
-
-      // Advance cursor only on successful commit
-      await tx.setCursor({
-        namespace: 'ui_memory',
-        lastProcessedEventId: latestEventId,
-        lastProcessedTs: latestEventTs,
-        updatedTs: now,
-      });
-    });
+    }
 
     return result;
   }
@@ -160,7 +161,7 @@ export class ConsolidationManager {
   ): Promise<void> {
     const now = Date.now();
     const ep: Episode = {
-      id: `ep-${now}-${Math.random().toString(36).slice(2, 8)}`,
+      id: nextGeneratedId('ep'),
       actorId,
       sessionId,
       caseId,
@@ -211,7 +212,7 @@ export class ConsolidationManager {
         result.updated++;
       } else if (synthesis.operator === 'add' || !match) {
         const ref: Reflection = {
-          id: `ref-${now}-${Math.random().toString(36).slice(2, 8)}`,
+          id: nextGeneratedId('ref'),
           actorId,
           title: synthesis.title,
           useCases: synthesis.use_cases,
@@ -257,7 +258,7 @@ export class ConsolidationManager {
 
     if (!match) {
       const created: InteractionPattern = {
-        id: `pat-${now}-${Math.random().toString(36).slice(2, 8)}`,
+        id: nextGeneratedId('pat'),
         actorId,
         taskClass: pattern.taskClass,
         sequenceKey: pattern.sequenceKey,

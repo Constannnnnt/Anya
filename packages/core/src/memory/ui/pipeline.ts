@@ -162,13 +162,6 @@ export class UiMemoryPipeline {
         preferenceResult.errors
       );
     }
-    const preferenceConsolidation = await this.consolidator.consolidatePreferences(
-      preferenceResult.candidates,
-      this.config.actorId,
-      this.config.store,
-      latest.id,
-      latest.ts,
-    );
 
     const episodicResult = await this.worker.runEpisodicExtraction(extractionContext);
     if (episodicResult.errors.length > 0) {
@@ -180,36 +173,55 @@ export class UiMemoryPipeline {
 
     const sessionId = this.resolveSessionId(windowEvents, latest);
     const caseId = this.resolveCaseId(windowEvents, latest);
-
-    if (episodicResult.episode) {
-      await this.consolidator.consolidateEpisode(
-        episodicResult.episode,
-        this.config.actorId,
-        sessionId,
-        caseId,
-        this.config.store,
-      );
-    }
-
-    if (episodicResult.reflections.length > 0) {
-      await this.consolidator.consolidateReflections(
-        episodicResult.reflections,
-        this.config.actorId,
-        this.config.store,
-      );
-    }
-
     const patternCandidate = buildPatternCandidate(
       windowEvents,
       episodicResult.episode,
     );
-    if (patternCandidate) {
-      await this.consolidator.consolidatePattern(
-        patternCandidate,
+    const now = Date.now();
+
+    const preferenceConsolidation = await this.config.store.transaction(async (tx) => {
+      const consolidatedPreferences = await this.consolidator.consolidatePreferences(
+        preferenceResult.candidates,
         this.config.actorId,
-        this.config.store,
+        tx,
       );
-    }
+
+      if (episodicResult.episode) {
+        await this.consolidator.consolidateEpisode(
+          episodicResult.episode,
+          this.config.actorId,
+          sessionId,
+          caseId,
+          tx,
+        );
+      }
+
+      if (episodicResult.reflections.length > 0) {
+        await this.consolidator.consolidateReflections(
+          episodicResult.reflections,
+          this.config.actorId,
+          tx,
+        );
+      }
+
+      if (patternCandidate) {
+        await this.consolidator.consolidatePattern(
+          patternCandidate,
+          this.config.actorId,
+          tx,
+        );
+      }
+
+      // Commit cursor only after all extraction artifacts are durably persisted.
+      await tx.setCursor({
+        namespace: 'ui_memory',
+        lastProcessedEventId: latest.id,
+        lastProcessedTs: latest.ts,
+        updatedTs: now,
+      });
+
+      return consolidatedPreferences;
+    });
 
     getLogger().info(
       `[UiMemoryPipeline] Extraction persisted: events=${windowEvents.length}, ` +
