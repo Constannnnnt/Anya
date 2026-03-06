@@ -2,10 +2,36 @@
   "name": "anya",
   "private": true,
   "description": "Anya framework repository (submodule)",
+  "license": "MIT",
+  "author": "Anya UI Contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Constannnnnt/Anya.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Constannnnnt/Anya/issues"
+  },
+  "homepage": "https://github.com/Constannnnnt/Anya#readme",
+  "packageManager": "npm@10.9.2",
+  "engines": {
+    "node": ">=18"
+  },
   "workspaces": [
     "packages/*"
   ],
+  "scripts": {
+    "build": "npm run --workspaces build",
+    "lint": "npm run --workspaces lint",
+    "test": "npm run --workspaces test",
+    "typecheck": "npm run --workspaces lint",
+    "changeset": "changeset",
+    "changeset:check": "node scripts/check-changeset.mjs",
+    "changeset:release-check": "node scripts/check-release-state.mjs",
+    "version-packages": "changeset version",
+    "release": "changeset publish"
+  },
   "devDependencies": {
+    "@changesets/cli": "^2.29.7",
     "typescript": "^5.9.3"
   }
 }
