@@ -183,7 +183,15 @@ function RenderComponent({
 
     // Belt-and-suspenders: core translator should already normalize, but
     // guard here in case a spec bypasses the decoder.
-    const safeProps = { ...spec.props, draggable: spec.draggable, dynamicInteractions };
+    const safeProps: Record<string, unknown> & {
+        style?: unknown;
+        draggable?: boolean;
+        dynamicInteractions: Record<string, (event: React.SyntheticEvent) => void>;
+    } = {
+        ...(spec.props as Record<string, unknown>),
+        draggable: spec.draggable,
+        dynamicInteractions,
+    };
     if (typeof safeProps.style === 'string') {
         logger.warn(`[AdaptiveRenderer] Component '${spec.type}' received a string style prop — this should have been normalized upstream.`);
         safeProps.style = normalizeStyleProp(safeProps.style);

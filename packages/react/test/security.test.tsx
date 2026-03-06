@@ -3,6 +3,7 @@ import { render } from '@testing-library/react';
 import React from 'react';
 import { Image } from '../src/primitives/Image';
 import { Link } from '../src/primitives/Link';
+import { Iframe } from '../src/primitives/Iframe';
 import { sanitizeUrl, isValidUrl } from '../src/primitives/shared';
 
 describe('Security: URL Validation', () => {
@@ -47,19 +48,39 @@ describe('Security: URL Validation', () => {
 
     describe('Components', () => {
         it('Image component sanitizes its src', () => {
+            const ImageView = Image.render;
             const { container } = render(
-                <Image id="test" props={{ src: 'javascript:alert(1)' }} onInteraction={() => {}} />
+                <ImageView id="test" props={{ src: 'javascript:alert(1)' }} onInteraction={() => {}} />
             );
             const img = container.querySelector('img');
             expect(img?.getAttribute('src')).toBe('about:blank');
         });
 
         it('Link component sanitizes its href', () => {
+            const LinkView = Link.render;
             const { container } = render(
-                <Link id="test" props={{ text: 'Click me', href: 'javascript:alert(1)' }} onInteraction={() => {}} />
+                <LinkView id="test" props={{ text: 'Click me', href: 'javascript:alert(1)' }} onInteraction={() => {}} />
             );
             const a = container.querySelector('a');
             expect(a?.getAttribute('href')).toBe('about:blank');
+        });
+
+        it('Iframe defaults to a restrictive sandbox without allow-same-origin', () => {
+            const IframeView = Iframe.render;
+            const { container } = render(
+                <IframeView id="frame" props={{ src: 'https://example.com/embed' }} onInteraction={() => {}} />
+            );
+            const iframe = container.querySelector('iframe');
+            expect(iframe?.getAttribute('sandbox')).toBe('allow-scripts allow-presentation');
+        });
+
+        it('Iframe sanitizes dangerous sources to about:blank', () => {
+            const IframeView = Iframe.render;
+            const { container } = render(
+                <IframeView id="frame" props={{ src: 'javascript:alert(1)' }} onInteraction={() => {}} />
+            );
+            const iframe = container.querySelector('iframe');
+            expect(iframe?.getAttribute('src')).toBe('about:blank');
         });
     });
 });

@@ -2,37 +2,93 @@
   "name": "@anya-ui/react",
   "version": "0.1.0",
   "description": "React bindings for Anya UI — Provider, hooks, AdaptiveRenderer",
+  "keywords": [
+    "anya-ui",
+    "react",
+    "agentic-ui",
+    "typescript",
+    "llm"
+  ],
+  "license": "MIT",
+  "author": "Anya UI Contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Constannnnnt/Anya.git",
+    "directory": "packages/react"
+  },
+  "bugs": {
+    "url": "https://github.com/Constannnnnt/Anya/issues"
+  },
+  "homepage": "https://github.com/Constannnnnt/Anya#readme",
   "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
   "sideEffects": [
     "*.css"
   ],
-  "main": "dist/index.js",
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.css",
+    "dist/**/*.d.ts",
+    "dist-cjs/**/*.js",
+    "dist-cjs/**/*.cjs",
+    "dist-cjs/**/*.d.cts",
+    "dist-cjs/package.json",
+    "README.md",
+    "LICENSE*"
+  ],
+  "main": "dist-cjs/index.js",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist-cjs/index.d.cts",
+        "default": "./dist-cjs/index.js"
+      },
+      "default": "./dist/index.js"
     },
-    "./index.css": "./dist/index.css"
+    "./index.css": {
+      "import": {
+        "types": "./dist/index.css.d.ts",
+        "default": "./dist/index.css"
+      },
+      "require": {
+        "types": "./dist-cjs/index.css.d.cts",
+        "default": "./dist-cjs/index.css.cjs"
+      },
+      "default": "./dist/index.css"
+    },
+    "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "tsc && node scripts/copy-css.mjs",
+    "build": "tsc && tsc -p tsconfig.cjs.json && node scripts/copy-css.mjs",
     "dev": "tsc --watch",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run lint && npm run test && npm run build"
   },
   "dependencies": {
-    "@anya-ui/core": "*"
+    "@anya-ui/core": "^0.1.0",
+    "zod": "^3.24.0"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0",
     "react-dom": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.18"
   }
 }

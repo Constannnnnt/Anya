@@ -414,10 +414,16 @@ export function useAnyaUI(): UseAnyaUI {
 
   const handleUserInteraction = useCallback(
     async (interaction: UIInteractionRecord) => {
+      const toPlannedKey = (planned: PlannedToolCall) => `${planned.bindingId}::${planned.toolId}`;
+      const toRecordKey = (record: BindingExecutionRecord) => `${record.bindingId}::${record.toolId ?? ''}`;
       const plannedToolCalls = collectPlannedToolCalls(
         ctx.presentation.getState().bindings,
         interaction,
       );
+      const pendingToolCalls = new Map<string, PlannedToolCall>();
+      for (const planned of plannedToolCalls) {
+        pendingToolCalls.set(toPlannedKey(planned), planned);
+      }
       const previousSpec = ctx.presentation.getState().currentSpec;
       recordInteraction(interaction);
       for (const planned of plannedToolCalls) {
@@ -433,6 +439,7 @@ export function useAnyaUI(): UseAnyaUI {
           record,
         }, { source: 'system' }));
         if (!record.toolId) continue;
+        pendingToolCalls.delete(toRecordKey(record));
         if (record.status === 'success') {
           dispatchRuntimeEvent(createRuntimeEvent('tool.finished', {
             toolId: record.toolId,
@@ -443,15 +450,25 @@ export function useAnyaUI(): UseAnyaUI {
           }, { source: 'system' }));
           continue;
         }
-        if (record.status === 'error') {
-          dispatchRuntimeEvent(createRuntimeEvent('tool.failed', {
-            toolId: record.toolId,
-            bindingId: record.bindingId,
-            interaction: record.interaction,
-            durationMs: record.durationMs,
-            error: record.error ?? 'Unknown tool execution error',
-          }, { source: 'system' }));
-        }
+        dispatchRuntimeEvent(createRuntimeEvent('tool.failed', {
+          toolId: record.toolId,
+          bindingId: record.bindingId,
+          interaction: record.interaction,
+          durationMs: record.durationMs,
+          error: record.error ?? (
+            record.status === 'skipped'
+              ? 'Tool execution skipped before completion.'
+              : 'Unknown tool execution error'
+          ),
+        }, { source: 'system' }));
+      }
+      for (const planned of pendingToolCalls.values()) {
+        dispatchRuntimeEvent(createRuntimeEvent('tool.failed', {
+          toolId: planned.toolId,
+          bindingId: planned.bindingId,
+          interaction,
+          error: 'Tool execution was planned but no execution record was produced.',
+        }, { source: 'system' }));
       }
       const nextSpec = ctx.presentation.getState().currentSpec;
       if (nextSpec && nextSpec !== previousSpec) {

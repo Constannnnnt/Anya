@@ -191,6 +191,115 @@ describe('useAnyaUI runtime integration', () => {
     expect(result.current.context.memory.getCurrentSpec()?.components[0].props.text).toBe('patched');
   });
 
+  it('emits a terminal tool event when a planned tool call becomes stale', async () => {
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <AnyaProvider components={mockComponents}>
+        {children}
+      </AnyaProvider>
+    );
+
+    const { result } = renderHook(() => useAnyaUI(), { wrapper });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const toolEvents: string[] = [];
+    const toolFailures: string[] = [];
+    const unsubscribe = result.current.subscribeRuntimeEvents('tool.*', (event) => {
+      toolEvents.push(event.type);
+      if (event.type === 'tool.failed') {
+        toolFailures.push(event.payload.error);
+      }
+    });
+
+    let release: (() => void) | undefined;
+    let unregisterTool: (() => void) | undefined;
+    act(() => {
+      unregisterTool = result.current.registerTool(
+        {
+          id: 'rotate',
+          name: 'Rotate',
+          description: 'Rotate image',
+          execution: { mode: 'server' },
+        },
+        () => new Promise((resolve) => {
+          release = () => resolve({ ok: true });
+        }),
+      );
+    });
+
+    const plan: PresentationPlan = {
+      mode: 'rebuild',
+      confidence: 1,
+      ui_spec: {
+        layout: 'stack',
+        components: [
+          { id: 'status', type: 'Heading', props: { text: 'idle' } },
+          { id: 'btn', type: 'Heading', props: { text: 'click' } },
+        ],
+      },
+      bindings: [
+        {
+          id: 'binding-tool',
+          componentId: 'btn',
+          actionMatch: 'tool:rotate',
+          action: {
+            type: 'tool_call',
+            toolId: 'rotate',
+            resultPatches: [
+              {
+                targetId: 'status',
+                propName: 'text',
+                value: 'done',
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    act(() => {
+      result.current.commitPresentationPlan(plan);
+    });
+
+    await act(async () => {
+      const pendingInteraction = result.current.handleUserInteraction({
+        timestamp: 3,
+        elementId: 'btn',
+        componentName: 'Heading',
+        action: 'tool:rotate',
+        trigger: 'onClick',
+      });
+
+      for (let attempt = 0; attempt < 30 && !release; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+      }
+
+      if (!release) {
+        throw new Error('Expected tool handler release callback to be initialized.');
+      }
+
+      result.current.publishSpec({
+        layout: 'stack',
+        components: [{ id: 'fresh', type: 'Heading', props: { text: 'fresh' } }],
+      });
+
+      release();
+      await pendingInteraction!;
+    });
+
+    unsubscribe();
+    act(() => {
+      unregisterTool?.();
+    });
+
+    expect(toolEvents.filter((type) => type === 'tool.started')).toHaveLength(1);
+    expect(toolEvents.filter((type) => type === 'tool.failed')).toHaveLength(1);
+    expect(toolEvents.filter((type) => type === 'tool.finished')).toHaveLength(0);
+    expect(toolFailures[0]).toContain('stale interaction result');
+  });
+
   it('replaces stale presentation bindings when agent saves a new decoded spec', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <AnyaProvider components={mockComponents}>

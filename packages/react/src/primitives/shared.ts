@@ -12,25 +12,55 @@ export const DRAG_HOLD_MS = 250;
 export type InteractionTrigger = 'onClick' | 'onDoubleClick' | 'onMouseEnter' | 'onMouseLeave';
 export type DynamicInteractions = Partial<Record<InteractionTrigger, (event: React.SyntheticEvent) => void>>;
 
-export function sanitizeUrl(url: string | undefined): string | undefined {
-    if (!url || typeof url !== 'string') return url;
+const ALLOWED_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:', 'data:', 'blob:']);
 
-    // Remove control characters to prevent bypasses
-    const sanitized = url.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+function normalizeUrlInput(url: string): string {
+    return url.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+}
+
+function isSafeDataUrl(url: string): boolean {
+    const match = /^data:([^;,]+)[;,]/i.exec(url);
+    if (!match) return false;
+    const mime = match[1].toLowerCase();
+    return mime.startsWith('image/') || mime.startsWith('video/') || mime.startsWith('audio/');
+}
+
+function isSafeBlobUrl(url: string): boolean {
+    const lower = url.toLowerCase();
+    return lower.startsWith('blob:https://') || lower.startsWith('blob:http://');
+}
+
+export function isValidUrl(url: string | undefined): boolean {
+    if (!url || typeof url !== 'string') return false;
+    const sanitized = normalizeUrlInput(url);
+    if (!sanitized) return false;
 
     try {
-        // Use a dummy base to force parsing even for relative URLs
+        // Use a dummy base to force parsing even for relative URLs.
         const parsed = new URL(sanitized, 'http://__dummy__');
-        const allowed = ['http:', 'https:', 'mailto:', 'tel:', 'data:', 'blob:'];
-        if (!allowed.includes(parsed.protocol)) {
-            return 'about:blank';
+        if (!ALLOWED_PROTOCOLS.has(parsed.protocol)) {
+            return false;
         }
-    } catch {
-        // Fallback if parsing fails for some reason
-        return 'about:blank';
-    }
 
-    return sanitized;
+        if (parsed.protocol === 'data:') {
+            return isSafeDataUrl(sanitized);
+        }
+
+        if (parsed.protocol === 'blob:') {
+            return isSafeBlobUrl(sanitized);
+        }
+
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+export function sanitizeUrl(url: string | undefined): string | undefined {
+    if (!url || typeof url !== 'string') return url;
+    const sanitized = normalizeUrlInput(url);
+    if (!sanitized) return 'about:blank';
+    return isValidUrl(sanitized) ? sanitized : 'about:blank';
 }
 
 export interface PrimitiveBehaviorProps {

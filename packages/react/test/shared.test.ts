@@ -17,7 +17,7 @@ describe('sanitizeUrl', () => {
     it('blocks dangerous schemes by returning about:blank', () => {
         expect(sanitizeUrl('javascript:alert(1)')).toBe('about:blank');
         expect(sanitizeUrl('vbscript:msgbox(1)')).toBe('about:blank');
-        expect(sanitizeUrl('data:text/html,<script>alert(1)</script>')).toBe('data:text/html,<script>alert(1)</script>'); // Data URI is allowed by allowlist, but HTML execution would be handled by other CSP contexts. The specific issue is javascript scheme.
+        expect(sanitizeUrl('data:text/html,<script>alert(1)</script>')).toBe('about:blank');
     });
 
     it('blocks dangerous schemes bypassing via control characters', () => {
