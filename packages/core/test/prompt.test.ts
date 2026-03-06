@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
-import { buildSystemPrompt } from '../src/prompt';
+import { buildResponseFormatBlock, buildSystemPrompt } from '../src/prompt';
 import { ComponentCatalog } from '../src/registry/catalog';
 import { SkillRegistry } from '../src/registry/skills';
 import { ContextMemoryManager } from '../src/memory/context';
@@ -73,7 +73,34 @@ describe('buildSystemPrompt', () => {
 
     const prompt = buildSystemPrompt(catalog, skills, memory, undefined, { responseFormat: 'json' });
     expect(prompt).toContain('Respond with a JSON object:');
+    expect(prompt).toContain('Respond ONLY with a raw JSON object. No explanations, no markdown fences.');
+    expect(prompt).not.toContain('Respond ONLY with raw YAML.');
+    expect(prompt).toContain('"spec_version": 1');
     expect(prompt).toContain('"layout": "stack"');
     expect(prompt).not.toContain('Respond with YAML in this format:');
+  });
+
+  it('uses the runtime component schema in the YAML response example', () => {
+    const yamlBlock = buildResponseFormatBlock('yaml');
+    expect(yamlBlock).toContain('  - type: ComponentName\n    id: "component-id"\n    draggable: true');
+    expect(yamlBlock).not.toContain('    props:\n      id: "component-id"');
+  });
+
+  it('keeps current context after response-format guidance', async () => {
+    const catalog = new ComponentCatalog();
+    catalog.register({
+      name: 'Button',
+      description: 'A clickable button',
+      propsSchema: z.object({ label: z.string() })
+    });
+
+    const memory = new ContextMemoryManager();
+    const profile = new AdaptiveProfile(new InMemoryStorage());
+    await profile.load();
+
+    const prompt = buildSystemPrompt(catalog, new SkillRegistry(), memory, profile);
+
+    expect(prompt.indexOf('# Response Format')).toBeGreaterThan(-1);
+    expect(prompt.indexOf('# Current Context')).toBeGreaterThan(prompt.indexOf('# Response Format'));
   });
 });

@@ -92,6 +92,21 @@ describe('DynamicOrchestrator transport integration', () => {
     ).rejects.toThrow(/Transport returned empty content/);
   });
 
+  it('returns response format prompt parts for the requested format', () => {
+    const orchestrator = createOrchestrator({
+      catalog: createBaseCatalog(),
+      skills: new SkillRegistry(),
+      memory: new ContextMemoryManager(),
+    });
+
+    const jsonParts = orchestrator.getPromptParts('json');
+    const yamlParts = orchestrator.getPromptParts();
+
+    expect(jsonParts.responseFormatBlock).toContain('Respond with a JSON object:');
+    expect(jsonParts.responseFormatBlock).toContain('"spec_version": 1');
+    expect(yamlParts.responseFormatBlock).toContain('Respond with YAML in this format:');
+  });
+
   it('keeps profile observations in decoded spec output for runtime memory pipeline', async () => {
     const complete = vi.fn().mockResolvedValue({
       content: [

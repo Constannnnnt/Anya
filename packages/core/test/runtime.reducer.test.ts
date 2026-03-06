@@ -40,6 +40,9 @@ describe('runtimeReducer', () => {
     expect(next.memory.interactions).toHaveLength(1);
     expect(next.memory.interactions[0].elementId).toBe('slider');
     expect(next.ui.spec?.components[0].props.value).toBe(42);
+
+    event.payload.record.newValue = 999;
+    expect(next.memory.interactions[0].newValue).toBe(42);
   });
 
   it('sets spec and session metadata on decoded specs', () => {
@@ -56,5 +59,53 @@ describe('runtimeReducer', () => {
     expect(next.ui.spec?.layout).toBe('grid');
     expect(next.session.status).toBe('rendering');
     expect(next.session.workflowContext).toBe('analytics');
+  });
+
+  it('keeps only the newest 100 interactions in order', () => {
+    let state = createInitialRuntimeState();
+
+    for (let i = 0; i < 130; i += 1) {
+      state = runtimeReducer(state, createRuntimeEvent('interaction.recorded', {
+        record: {
+          timestamp: i,
+          elementId: `input-${i}`,
+          componentName: 'TextInput',
+          action: 'change',
+          propName: 'value',
+          newValue: i,
+        },
+      }));
+    }
+
+    expect(state.memory.interactions).toHaveLength(100);
+    expect(state.memory.interactions[0].timestamp).toBe(30);
+    expect(state.memory.interactions[99].timestamp).toBe(129);
+  });
+
+  it('caps and clones hydrated interaction history', () => {
+    const base = createInitialRuntimeState();
+    const hydrated = Array.from({ length: 130 }, (_, i) => ({
+      timestamp: i,
+      elementId: `h-${i}`,
+      componentName: 'TextInput',
+      action: 'change',
+      propName: 'value',
+      newValue: i,
+    }));
+
+    const next = runtimeReducer(base, createRuntimeEvent('memory.hydrated', {
+      state: {
+        memory: {
+          interactions: hydrated,
+        },
+      },
+    }));
+
+    expect(next.memory.interactions).toHaveLength(100);
+    expect(next.memory.interactions[0].timestamp).toBe(30);
+    expect(next.memory.interactions[99].timestamp).toBe(129);
+
+    hydrated[129]!.newValue = 9999;
+    expect(next.memory.interactions[99].newValue).toBe(129);
   });
 });

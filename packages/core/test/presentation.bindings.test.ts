@@ -68,4 +68,36 @@ describe('presentation binding extraction', () => {
       },
     });
   });
+
+  it('generates unique binding ids for repeated action and trigger combinations', () => {
+    const spec: UIRenderSpec = {
+      spec_version: 1,
+      layout: 'stack',
+      components: [
+        {
+          id: 'btn-1',
+          type: 'Button',
+          props: { label: 'Open details' },
+          interactions: [
+            {
+              trigger: 'onClick',
+              action: 'open_details',
+              description: 'Open details panel',
+            },
+            {
+              trigger: 'onClick',
+              action: 'open_details',
+              description: 'Open details panel in a new region',
+            },
+          ],
+        },
+      ],
+    };
+
+    const plan = extractBindingsFromSpec(spec);
+    const bindingIds = plan.bindings.map((binding) => binding.id);
+
+    expect(plan.bindings).toHaveLength(2);
+    expect(new Set(bindingIds).size).toBe(bindingIds.length);
+  });
 });

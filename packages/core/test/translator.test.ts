@@ -162,6 +162,27 @@ components:
       expect(result.components[0].interactions?.[0].trigger).toBe('onClick');
     });
 
+    it('drops components with non-string types and auto-generates ids for invalid ids', () => {
+      const rawText = `
+spec_version: 1
+layout: stack
+components:
+  - id: bad-1
+    type:
+      nested: object
+    props: {}
+  - id: 123
+    type: Text
+    props:
+      text: "Valid"
+`;
+      const result = decode(rawText, catalog);
+      expect(result.components).toHaveLength(1);
+      expect(result.components[0].type).toBe('Text');
+      expect(typeof result.components[0].id).toBe('string');
+      expect(result.components[0].id).not.toBe('123');
+    });
+
     it('decodes interaction tool_call and preserves parameter value types', () => {
       const rawText = `
 spec_version: 1

@@ -1,9 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { LocalStorageAdapter } from '../src/storage/localStorage';
+import { consoleLogger, setLogger } from '../src/logging';
 
 describe('LocalStorageAdapter', () => {
   let adapter: LocalStorageAdapter;
   const prefix = 'test-prefix';
+  let warnMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -17,7 +19,18 @@ describe('LocalStorageAdapter', () => {
       length: 0,
     };
     (globalThis as any).localStorage = localStorageMock;
+    warnMock = vi.fn();
+    setLogger({
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: warnMock,
+      error: vi.fn(),
+    });
     adapter = new LocalStorageAdapter(prefix);
+  });
+
+  afterEach(() => {
+    setLogger(consoleLogger);
   });
 
   describe('read', () => {
@@ -47,12 +60,11 @@ describe('LocalStorageAdapter', () => {
       (localStorage.getItem as any).mockImplementation(() => {
         throw error;
       });
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
       const result = await adapter.read(path);
 
       expect(result).toBeNull();
-      expect(warnSpy).toHaveBeenCalledWith(
+      expect(warnMock).toHaveBeenCalledWith(
         `[LocalStorageAdapter] Failed to read "${path}":`,
         error
       );
@@ -76,11 +88,10 @@ describe('LocalStorageAdapter', () => {
       (localStorage.setItem as any).mockImplementation(() => {
         throw error;
       });
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
       await adapter.write(path, content);
 
-      expect(warnSpy).toHaveBeenCalledWith(
+      expect(warnMock).toHaveBeenCalledWith(
         `[LocalStorageAdapter] Failed to write "${path}":`,
         error
       );

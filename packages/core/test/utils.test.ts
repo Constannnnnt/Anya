@@ -3,6 +3,25 @@ import { applyOptimisticUpdate } from '../src/utils';
 import type { UIRenderSpec, UIInteractionRecord } from '../src/types';
 
 describe('applyOptimisticUpdate', () => {
+  it('returns the same spec reference for non-mutating interaction actions', () => {
+    const spec: UIRenderSpec = {
+      layout: 'stack',
+      components: [
+        { id: 'btn', type: 'Button', props: { label: 'Run' } },
+      ],
+    };
+
+    const interaction: UIInteractionRecord = {
+      timestamp: Date.now(),
+      elementId: 'btn',
+      componentName: 'Button',
+      action: 'submit',
+    };
+
+    const updated = applyOptimisticUpdate(spec, interaction);
+    expect(updated).toBe(spec);
+  });
+
   it('moves a node on drop when sourceId + targetIds are present', () => {
     const spec: UIRenderSpec = {
       layout: 'stack',
@@ -100,8 +119,30 @@ describe('applyOptimisticUpdate', () => {
     };
 
     const updated = applyOptimisticUpdate(spec, interaction);
+    expect(updated).toBe(spec);
     expect(updated.components).toHaveLength(2);
     expect(updated.components[0].id).toBe('source');
     expect(updated.components[1].id).toBe('target');
+  });
+
+  it('returns the same reference when change target is missing', () => {
+    const spec: UIRenderSpec = {
+      layout: 'stack',
+      components: [
+        { id: 'slider', type: 'ColorSlider', props: { value: 10 } },
+      ],
+    };
+
+    const interaction: UIInteractionRecord = {
+      timestamp: Date.now(),
+      elementId: 'missing',
+      componentName: 'ColorSlider',
+      action: 'change',
+      propName: 'value',
+      newValue: 42,
+    };
+
+    const updated = applyOptimisticUpdate(spec, interaction);
+    expect(updated).toBe(spec);
   });
 });

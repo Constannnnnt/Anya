@@ -58,6 +58,61 @@ describe('presentation runtime (v0 scenarios)', () => {
     expect(rotateButton?.interactions?.[0].action).toBe('tool:rotate');
   });
 
+  it('supports custom fallback component names for non-default renderers', () => {
+    const projection = buildUIFromData(
+      [
+        {
+          id: 'doc-a',
+          kind: 'document',
+          payload: { title: 'Brief', content: 'Design notes' },
+        },
+      ],
+      [rotateTool],
+      {
+        fallbackComponents: {
+          heading: 'TitleBlock',
+          card: 'Panel',
+          text: 'CopyBlock',
+          section: 'Group',
+          button: 'ActionButton',
+        },
+      }
+    );
+
+    const dataSection = projection.spec.components.find((component) => component.id === 'data-section');
+    const toolSection = projection.spec.components.find((component) => component.id === 'tools-section');
+
+    expect(dataSection?.type).toBe('Group');
+    expect(dataSection?.children?.[0].type).toBe('Panel');
+    expect(dataSection?.children?.[0].children?.[0].type).toBe('TitleBlock');
+    expect(dataSection?.children?.[0].children?.[1].type).toBe('CopyBlock');
+    expect(toolSection?.type).toBe('Group');
+    expect(toolSection?.children?.[0].type).toBe('ActionButton');
+  });
+
+  it('threads fallback component names through deterministic planner rebuilds', () => {
+    const plan = planUIUpdate({
+      context_version: 0,
+      dataNodes: [{ id: 'doc-1', kind: 'document', payload: { title: 'Doc', content: 'A' } }],
+      tools: [rotateTool],
+      fallbackComponents: {
+        section: 'Group',
+        card: 'Panel',
+        heading: 'TitleBlock',
+        text: 'CopyBlock',
+        button: 'ActionButton',
+      },
+      currentSpec: null,
+      currentBindings: [],
+    });
+
+    expect(plan.mode).toBe('rebuild');
+    expect(plan.ui_spec.components[0].type).toBe('Group');
+    expect(plan.ui_spec.components[0].children?.[0].type).toBe('Panel');
+    expect(plan.bindings[0].componentId).toBe('tool-btn-rotate');
+    expect(plan.ui_spec.components[1].children?.[0].type).toBe('ActionButton');
+  });
+
   it('executes a bound tool call natively and applies result patches', async () => {
     const initialSpec: UIRenderSpec = {
       layout: 'stack',

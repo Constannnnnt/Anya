@@ -25,6 +25,11 @@ async function waitForCondition(
 }
 
 describe('createAnyaKernel', () => {
+  it('defaults to in-memory storage in non-browser runtimes', () => {
+    const kernel = createAnyaKernel();
+    expect(kernel.storage).toBeInstanceOf(InMemoryStorage);
+  });
+
   it('builds core services and applies decoded specs through one lifecycle path', () => {
     const kernel = createAnyaKernel({
       storage: new InMemoryStorage(),

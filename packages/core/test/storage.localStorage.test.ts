@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { LocalStorageAdapter } from '../src/storage/localStorage';
+import { consoleLogger, setLogger } from '../src/logging';
 
 describe('LocalStorageAdapter', () => {
   let localStorageMock: Record<string, string>;
+  let warnMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     localStorageMock = {};
@@ -15,13 +17,19 @@ describe('LocalStorageAdapter', () => {
       }),
     } as any;
 
-    // Mock console.warn to keep test output clean
-    globalThis.console.warn = vi.fn();
+    warnMock = vi.fn();
+    setLogger({
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: warnMock,
+      error: vi.fn(),
+    });
   });
 
   afterEach(() => {
     // Note: Can't easily unstub all in Bun, but we reset localStorage manually.
     globalThis.localStorage = undefined as any;
+    setLogger(consoleLogger);
   });
 
   describe('read', () => {
@@ -50,7 +58,7 @@ describe('LocalStorageAdapter', () => {
 
       const result = await adapter.read('test.txt');
       expect(result).toBeNull();
-      expect(console.warn).toHaveBeenCalledWith(
+      expect(warnMock).toHaveBeenCalledWith(
         '[LocalStorageAdapter] Failed to read "test.txt":',
         mockError
       );
@@ -87,7 +95,7 @@ describe('LocalStorageAdapter', () => {
 
       // Content shouldn't be saved in our mock state since the method threw
       expect(localStorageMock['anya-ui:new-file.txt']).toBeUndefined();
-      expect(console.warn).toHaveBeenCalledWith(
+      expect(warnMock).toHaveBeenCalledWith(
         '[LocalStorageAdapter] Failed to write "new-file.txt":',
         mockError
       );
