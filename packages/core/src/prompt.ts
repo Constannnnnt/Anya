@@ -24,6 +24,10 @@ export function buildSystemPrompt(
   uiMemoryPriors?: string,
 ): string {
   const sections: string[] = [];
+  const responseFormat = opts?.responseFormat ?? 'yaml';
+  const rawResponseInstruction = responseFormat === 'json'
+    ? '- Respond ONLY with a raw JSON object. No explanations, no markdown fences.'
+    : '- Respond ONLY with raw YAML. No explanations, no markdown fences.';
 
   // ── Section 1: Role & Identity ──────────────────────────────────────
   sections.push(
@@ -102,7 +106,7 @@ export function buildSystemPrompt(
         '- Use `Iframe` for external/online videos and embeds (YouTube, Vimeo, etc).',
         '- Use `Image` for images (jpg, png, gif, webp).',
         '',
-        '- Respond ONLY with raw YAML. No explanations, no markdown fences.',
+        rawResponseInstruction,
       ].join('\n')
   );
   sections.push('');
@@ -197,9 +201,8 @@ export function buildSystemPrompt(
   }
 
   // ── Section 6: Response Format ──────────────────────────────────────
-  const format = opts?.responseFormat ?? 'yaml';
   sections.push('# Response Format');
-  sections.push(buildResponseFormatBlock(format));
+  sections.push(buildResponseFormatBlock(responseFormat));
 
   // ── Section 7: Memory / Context ─────────────────────────────────────
   if (opts?.includeMemory !== false) {
@@ -244,6 +247,7 @@ export function buildResponseFormatBlock(format: 'yaml' | 'json'): string {
       'Respond with a JSON object:',
       '```',
       '{',
+      '  "spec_version": 1,',
       '  "layout": "stack",',
       '  "ux_rationale": "Reasoning about layout restructuring",',
       '  "components": [',
@@ -266,9 +270,9 @@ export function buildResponseFormatBlock(format: 'yaml' | 'json'): string {
     '  text-primary: "#00ff00"',
     'components:',
     '  - type: ComponentName',
+    '    id: "component-id"',
     '    draggable: true',
     '    props:',
-    '      id: "component-id"',
     '      key: value',
     '      style:',
     '        backgroundColor: "var(--anya-bg-primary)"',

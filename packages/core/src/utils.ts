@@ -1,4 +1,18 @@
 import type { UIRenderSpec, UIComponentSpec, UIInteractionRecord } from './types';
+import { cloneRenderSpec } from './clone';
+
+const KNOWN_CONTAINER_TYPES = new Set([
+  'Container',
+  'FlexRow',
+  'FlexCol',
+  'Card',
+  'Section',
+  'Timeline',
+  'TimelineItem',
+  'List',
+  'Accordion',
+  'AccordionItem',
+]);
 
 /**
  * Applies direct local interactions (like drag and drops or value changes)
@@ -8,21 +22,17 @@ export function applyOptimisticUpdate(
   spec: UIRenderSpec,
   interaction: UIInteractionRecord
 ): UIRenderSpec {
-  // Deep clone to avoid mutating the current active spec React state directly
-  const newSpec = JSON.parse(JSON.stringify(spec)) as UIRenderSpec;
+  const isDrop =
+    interaction.action === 'drop'
+    && typeof interaction.sourceId === 'string'
+    && Array.isArray(interaction.targetIds)
+    && interaction.targetIds.length > 0;
+  const isChange = interaction.action === 'change' && typeof interaction.propName === 'string';
 
-  const KNOWN_CONTAINER_TYPES = new Set([
-    'Container',
-    'FlexRow',
-    'FlexCol',
-    'Card',
-    'Section',
-    'Timeline',
-    'TimelineItem',
-    'List',
-    'Accordion',
-    'AccordionItem',
-  ]);
+  // Avoid cloning for interaction types that do not mutate UI state optimistically.
+  if (!isDrop && !isChange) {
+    return spec;
+  }
 
   function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null;
@@ -99,18 +109,28 @@ export function applyOptimisticUpdate(
   }
 
   function applyBoundValue(nodes: UIComponentSpec[], sourceId: string, propName: string, newValue: unknown): void {
+    const nodeIndex = new Map<string, UIComponentSpec>();
+    const stack = [...nodes];
+    while (stack.length > 0) {
+      const next = stack.pop()!;
+      nodeIndex.set(next.id, next);
+      if (next.children?.length) {
+        stack.push(...next.children);
+      }
+    }
+
     const visited = new Set<string>([sourceId]);
     const queue: string[] = [sourceId];
 
-    while (queue.length > 0) {
-      const currentId = queue.shift()!;
-      const currentNode = findNode(nodes, currentId);
+    for (let index = 0; index < queue.length; index += 1) {
+      const currentId = queue[index];
+      const currentNode = nodeIndex.get(currentId);
       if (!currentNode || !currentNode.bindTo?.length) continue;
 
       for (const targetId of currentNode.bindTo) {
         if (visited.has(targetId)) continue;
 
-        const targetNode = findNode(nodes, targetId);
+        const targetNode = nodeIndex.get(targetId);
         if (!targetNode) continue;
 
         targetNode.props[propName] = newValue;
@@ -121,37 +141,45 @@ export function applyOptimisticUpdate(
   }
 
   // 1. Spatial Updates (Drag and Drop)
-  if (interaction.action === 'drop' && interaction.sourceId && interaction.targetIds && interaction.targetIds.length > 0) {
-    const sourceId = interaction.sourceId;
-    const targetId = interaction.targetIds[0];
-    const sourceNode = findNode(newSpec.components, sourceId);
-    const targetNode = findNode(newSpec.components, targetId);
+  if (isDrop) {
+    const sourceId = interaction.sourceId!;
+    const targetId = interaction.targetIds?.[0];
+    if (!targetId || sourceId === targetId) return spec;
 
-    if (
-      sourceNode
-      && targetNode
-      && sourceId !== targetId
-      && canAcceptChildren(targetNode)
-      && !subtreeContains(sourceNode, targetId)
-    ) {
-      const node = findAndRemove(newSpec.components, sourceId);
-      if (node) {
-        const appended = findAndAppend(newSpec.components, targetId, node);
-        if (!appended) {
-          // Fallback: keep the element visible instead of dropping data on append failure.
-          newSpec.components.push(node);
-        }
-      }
+    const sourceNode = findNode(spec.components, sourceId);
+    const targetNode = findNode(spec.components, targetId);
+    if (!sourceNode || !targetNode || !canAcceptChildren(targetNode) || subtreeContains(sourceNode, targetId)) {
+      return spec;
     }
+
+    const newSpec = cloneRenderSpec(spec);
+    const node = findAndRemove(newSpec.components, sourceId);
+    if (!node) return spec;
+
+    const appended = findAndAppend(newSpec.components, targetId, node);
+    if (!appended) {
+      // Fallback: keep the element visible instead of dropping data on append failure.
+      newSpec.components.push(node);
+    }
+
+    return newSpec;
   }
 
   // 2. Data Updates (Input Changes)
-  if (interaction.action === 'change' && interaction.propName) {
-    const changed = updateProp(newSpec.components, interaction.elementId, interaction.propName, interaction.newValue);
+  if (isChange) {
+    const propName = interaction.propName!;
+    const sourceNode = findNode(spec.components, interaction.elementId);
+    if (!sourceNode) return spec;
+
+    const newSpec = cloneRenderSpec(spec);
+    const changed = updateProp(newSpec.components, interaction.elementId, propName, interaction.newValue);
     if (changed) {
-      applyBoundValue(newSpec.components, interaction.elementId, interaction.propName, interaction.newValue);
+      applyBoundValue(newSpec.components, interaction.elementId, propName, interaction.newValue);
+      return newSpec;
     }
+
+    return spec;
   }
 
-  return newSpec;
+  return spec;
 }

@@ -31,9 +31,6 @@ export { LocalStorageAdapter } from './storage/localStorage';
 export { ContextMemoryManager } from './memory/context';
 export { AdaptiveProfile } from './memory/profile';
 
-// ─── UI Memory Pipeline ──────────────────────────────────────────────────
-export * from './memory/ui';
-
 // ─── Registry ────────────────────────────────────────────────────────────
 export {
   ComponentCatalog,
@@ -83,6 +80,7 @@ export { decode, encode, encodeToolResult, normalizeStyleProp } from './translat
 
 // ─── Utils ───────────────────────────────────────────────────────────────
 export { applyOptimisticUpdate } from './utils';
+export { nextGeneratedId, resetIdGenerator, setIdGenerator } from './id';
 
 // ─── Quality (Phase 6) ───────────────────────────────────────────────────
 export {
@@ -171,6 +169,7 @@ export {
   createPresentationEngine,
   planUIUpdate,
   BindingActionExecutor,
+  DEFAULT_FALLBACK_COMPONENT_TYPES,
   executeBindingAction,
   extractBindingsFromSpec,
   planPresentation,
@@ -193,6 +192,7 @@ export type {
   DataNode,
   DataNodeKind,
   ContextEnvelope,
+  FallbackComponentTypes,
   LocalPatchOperation,
   PresentationContext,
   PresentationEngine,

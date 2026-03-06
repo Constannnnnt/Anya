@@ -14,12 +14,12 @@ import type { ContextMemoryManager } from './memory/context';
 import type { UIRenderSpec, UIComponentSpec, UIInteractionRecord, UIInteractionDefinition, ThemeTokens } from './types';
 import { normalizeUISpecEnvelope, withSpecVersion } from './spec';
 import { getLogger } from './logging';
+import { nextGeneratedId } from './id';
 
 // ─── Decoder ─────────────────────────────────────────────────────────────
 
-let _idCounter = 0;
 function nextId(): string {
-  return `ui-${Date.now()}-${++_idCounter}`;
+  return nextGeneratedId('ui');
 }
 
 /**
@@ -223,13 +223,13 @@ export function decode(
   const cleaned = extractYaml(raw);
 
   if (!cleaned.trim()) {
-    logger.warn('[Translator.decode] Empty YAML after extraction. Raw LLM output:', raw.substring(0, 500));
+    logger.warn('[Translator.decode] Empty YAML after extraction.');
     return withSpecVersion({ layout: 'stack', components: [] });
   }
 
   // Gracefully handle partial/truncated YAML like just "layout: "
   if (/^layout:\s*$/.test(cleaned.trim())) {
-    logger.warn('[Translator.decode] LLM returned truncated YAML (only layout key). Raw:', raw.substring(0, 500));
+    logger.warn('[Translator.decode] LLM returned truncated YAML (only layout key).');
     return withSpecVersion({ layout: 'stack', components: [] });
   }
 
@@ -238,16 +238,12 @@ let parsed: Record<string, unknown>;
     const fixedYaml = fixUnquotedSemicolons(cleaned);
     parsed = YAML.parse(fixedYaml);
   } catch (err) {
-    logger.warn('[Translator.decode] YAML parse failed. Raw:', raw.substring(0, 500));
-    throw new Error(
-      `[Translator.decode] Could not parse YAML from LLM output.\n` +
-      `Cleaned input:\n${cleaned}\n\n` +
-      `Original input:\n${raw.substring(0, 500)}`
-    );
+    logger.warn('[Translator.decode] YAML parse failed.');
+    throw new Error('[Translator.decode] Could not parse YAML from LLM output.');
   }
 
   if (!parsed || typeof parsed !== 'object') {
-    logger.warn('[Translator.decode] YAML did not parse to object. Got:', parsed);
+    logger.warn('[Translator.decode] YAML did not parse to object.');
     return withSpecVersion({ layout: 'stack', components: [] });
   }
 
@@ -260,7 +256,7 @@ let parsed: Record<string, unknown>;
   }
 
   if (rawComponents.length === 0) {
-    logger.warn('[Translator.decode] LLM returned YAML but no components. Parsed:', JSON.stringify(normalized).substring(0, 300));
+    logger.warn('[Translator.decode] LLM returned YAML but no components.');
   }
 
   const components: UIComponentSpec[] = rawComponents
@@ -282,7 +278,7 @@ function decodeComponent(
   raw: Record<string, unknown>,
   catalog: ComponentCatalog
 ): UIComponentSpec | null {
-  const type = raw.type as string;
+  const type = typeof raw.type === 'string' ? raw.type.trim() : '';
   if (!type) return null;
 
   const def = catalog.get(type);
@@ -307,14 +303,21 @@ function decodeComponent(
     .filter((c): c is UIComponentSpec => c !== null);
 
   const rawInteractions = normalizeInteractionDefinitions(raw.interactions);
+  const componentId =
+    typeof raw.id === 'string' && raw.id.trim().length > 0
+      ? raw.id
+      : nextId();
+  const draggable = typeof raw.draggable === 'boolean'
+    ? raw.draggable
+    : undefined;
 
   return {
-    id: (raw.id as string) ?? nextId(),
+    id: componentId,
     type,
     props,
     interactions: rawInteractions?.length ? rawInteractions : undefined,
     bindTo: Array.isArray(raw.bindTo) ? raw.bindTo.filter(id => typeof id === 'string') : undefined,
-    draggable: raw.draggable as boolean | undefined,
+    draggable,
     children: children?.length ? children : undefined,
   };
 }

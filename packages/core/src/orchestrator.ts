@@ -71,12 +71,12 @@ export class DynamicOrchestrator {
   /**
    * Level 3: Get raw prompt parts to build your own prompt.
    */
-  getPromptParts(): PromptParts {
+  getPromptParts(format: 'yaml' | 'json' = 'yaml'): PromptParts {
     return {
       catalogYaml: this.catalog.toLLMCatalog(),
       skillsYaml: this.skills.toLLMSkills(),
       memoryContext: this.memory.toLLMContext(),
-      responseFormatBlock: buildResponseFormatBlock('yaml'),
+      responseFormatBlock: buildResponseFormatBlock(format),
     };
   }
 

@@ -13,6 +13,7 @@ import { ContextMemoryManager } from './memory/context';
 import { AdaptiveProfile } from './memory/profile';
 import { DynamicOrchestrator } from './orchestrator';
 import { LocalStorageAdapter } from './storage/localStorage';
+import { InMemoryStorage } from './storage/memory';
 import type { FileStorage } from './storage/interface';
 import type { ModelTransport } from './transport/interface';
 import {
@@ -123,12 +124,26 @@ function registerWorkflowContexts(registry: SkillRegistry, workflowContexts: Ski
   }
 }
 
+function canUseLocalStorage(): boolean {
+  try {
+    return typeof globalThis.localStorage !== 'undefined';
+  } catch {
+    return false;
+  }
+}
+
+function createDefaultStorage(): FileStorage {
+  return canUseLocalStorage()
+    ? new LocalStorageAdapter()
+    : new InMemoryStorage();
+}
+
 /**
  * Composition root for core runtime services.
  * Host integrations can use this to avoid wiring every dependency manually.
  */
 export function createAnyaKernel(config?: AnyaKernelConfig): AnyaKernel {
-  const storage = config?.storage ?? new LocalStorageAdapter();
+  const storage = config?.storage ?? createDefaultStorage();
 
   const catalog = new ComponentCatalog({
     allowedCapabilities: config?.allowedCapabilities,

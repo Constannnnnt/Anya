@@ -5,9 +5,11 @@
  */
 
 import type { FileStorage } from './interface';
+import { getLogger } from '../logging';
 
 export class LocalStorageAdapter implements FileStorage {
   private prefix: string;
+  private readonly logger = getLogger();
 
   constructor(prefix = 'anya-ui') {
     this.prefix = prefix;
@@ -17,7 +19,7 @@ export class LocalStorageAdapter implements FileStorage {
     try {
       return localStorage.getItem(`${this.prefix}:${path}`);
     } catch (error) {
-      console.warn(`[LocalStorageAdapter] Failed to read "${path}":`, error);
+      this.logger.warn(`[LocalStorageAdapter] Failed to read "${path}":`, error);
       return null;
     }
   }
@@ -26,7 +28,7 @@ export class LocalStorageAdapter implements FileStorage {
     try {
       localStorage.setItem(`${this.prefix}:${path}`, content);
     } catch (error) {
-      console.warn(`[LocalStorageAdapter] Failed to write "${path}":`, error);
+      this.logger.warn(`[LocalStorageAdapter] Failed to write "${path}":`, error);
     }
   }
 }

@@ -146,10 +146,12 @@ export function createRuntimeStore(opts?: {
     processingQueue = true;
     const seenEventIdsInCycle = new Set<string>();
     let processedInCycle = 0;
+    let readIndex = 0;
 
     try {
-      while (dispatchQueue.length > 0) {
-        const event = dispatchQueue.shift()!;
+      while (readIndex < dispatchQueue.length) {
+        const event = dispatchQueue[readIndex]!;
+        readIndex += 1;
 
         if (dedupeNestedEventIds && seenEventIdsInCycle.has(event.id)) {
           onEffectError(
@@ -176,6 +178,9 @@ export function createRuntimeStore(opts?: {
         notifyEventListeners(eventListeners, event, state, onEffectError);
       }
     } finally {
+      if (readIndex > 0) {
+        dispatchQueue.splice(0, readIndex);
+      }
       processingQueue = false;
     }
   };
