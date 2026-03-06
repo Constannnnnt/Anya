@@ -401,6 +401,11 @@ export type BindingActionHandler<TAction extends BindingAction = BindingAction> 
   context: BindingActionHandlerContext
 ) => Promise<BindingExecutionOutcome>;
 
+type AnyBindingActionHandler = (
+  input: Omit<BindingActionExecutionInput, 'action'> & { action: BindingAction },
+  context: BindingActionHandlerContext
+) => Promise<BindingExecutionOutcome>;
+
 function createBaseRecord(input: BindingActionExecutionInput): {
   startedAt: number;
   baseRecord: Pick<BindingExecutionRecord, 'bindingId' | 'interaction' | 'timestamp'>;
@@ -574,7 +579,7 @@ async function defaultUrlNavigationHandler(
 }
 /** Dispatches one binding action to a registered action strategy handler. */
 export class BindingActionExecutor {
-  private handlers = new Map<BindingAction['type'], BindingActionHandler<any>>();
+  private handlers = new Map<BindingAction['type'], AnyBindingActionHandler>();
 
   constructor() {
     this.registerHandler('local_patch', (input) => defaultLocalPatchHandler(input));
@@ -588,7 +593,18 @@ export class BindingActionExecutor {
     type: TType,
     handler: BindingActionHandler<Extract<BindingAction, { type: TType }>>
   ): () => void {
-    this.handlers.set(type, handler as BindingActionHandler<any>);
+    const wrappedHandler: AnyBindingActionHandler = async (input, context) => {
+      if (input.action.type !== type) {
+        throw new Error(
+          `[BindingActionExecutor] Handler type mismatch. Expected '${type}', received '${input.action.type}'.`
+        );
+      }
+      const typedInput = input as Omit<BindingActionExecutionInput, 'action'> & {
+        action: Extract<BindingAction, { type: TType }>;
+      };
+      return handler(typedInput, context);
+    };
+    this.handlers.set(type, wrappedHandler);
     return () => {
       this.handlers.delete(type);
     };

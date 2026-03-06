@@ -1,4 +1,5 @@
 import type { UIComponentSpec, UIRenderSpec } from '../types';
+import { deepClone } from '../clone';
 import type {
   BindingValueExpression,
   LocalPatchOperation,
@@ -13,11 +14,11 @@ const DEFAULT_MAX_PATCH_OPERATIONS = 300;
 const DEFAULT_MAX_PATCH_OPERATIONS_PER_COMPONENT = 6;
 
 function cloneSpec(spec: UIRenderSpec): UIRenderSpec {
-  return JSON.parse(JSON.stringify(spec)) as UIRenderSpec;
+  return deepClone(spec);
 }
 
 function cloneBindings(bindings: UIBinding[]): UIBinding[] {
-  return JSON.parse(JSON.stringify(bindings)) as UIBinding[];
+  return deepClone(bindings);
 }
 
 function findComponentById(nodes: UIComponentSpec[], id: string): UIComponentSpec | null {

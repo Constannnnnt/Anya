@@ -135,6 +135,7 @@ function resolveCandidateProjection(context: PresentationContext): CandidateProj
     workflowContext: resolveWorkflowContext(context),
     availableWorkflowContexts: resolveAvailableWorkflowContexts(context),
     newUserContext: context.newUserContext,
+    fallbackComponents: context.fallbackComponents,
   });
   return {
     spec: fallback.spec,

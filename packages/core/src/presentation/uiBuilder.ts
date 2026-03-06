@@ -5,11 +5,32 @@
 import type { UIComponentSpec, UIRenderSpec } from '../types';
 import type {
   DataNode,
+  FallbackComponentTypes,
   PresentationPlan,
   PresentationSkill,
   ToolManifest,
   UIBinding,
 } from './types';
+
+export const DEFAULT_FALLBACK_COMPONENT_TYPES: FallbackComponentTypes = {
+  heading: 'Heading',
+  card: 'Card',
+  image: 'Image',
+  list: 'List',
+  listItem: 'ListItem',
+  text: 'Text',
+  section: 'Section',
+  button: 'Button',
+};
+
+function resolveFallbackComponentTypes(
+  overrides?: Partial<FallbackComponentTypes>
+): FallbackComponentTypes {
+  return {
+    ...DEFAULT_FALLBACK_COMPONENT_TYPES,
+    ...overrides,
+  };
+}
 
 function toSafeText(input: unknown, max = 280): string {
   const raw =
@@ -20,11 +41,14 @@ function toSafeText(input: unknown, max = 280): string {
   return `${raw.slice(0, max)}...`;
 }
 
-function buildDataNodeComponent(node: DataNode): UIComponentSpec {
+function buildDataNodeComponent(
+  node: DataNode,
+  fallbackComponents: FallbackComponentTypes,
+): UIComponentSpec {
   const baseId = `data-node-${node.id}`;
   const header: UIComponentSpec = {
     id: `${baseId}-heading`,
-    type: 'Heading',
+    type: fallbackComponents.heading,
     props: {
       text: node.metadata?.label ?? node.id,
       level: 3,
@@ -36,7 +60,7 @@ function buildDataNodeComponent(node: DataNode): UIComponentSpec {
     const src = typeof payload === 'string' ? payload : payload?.src;
     return {
       id: baseId,
-      type: 'Card',
+      type: fallbackComponents.card,
       props: {
         title: node.metadata?.title ?? 'Image',
         dataNodeId: node.id,
@@ -45,7 +69,7 @@ function buildDataNodeComponent(node: DataNode): UIComponentSpec {
         header,
         {
           id: `${baseId}-image`,
-          type: 'Image',
+          type: fallbackComponents.image,
           props: {
             src: src ?? '',
             alt: typeof payload === 'object' ? payload?.alt : node.id,
@@ -59,7 +83,7 @@ function buildDataNodeComponent(node: DataNode): UIComponentSpec {
   if (node.kind === 'array' && Array.isArray(node.payload)) {
     return {
       id: baseId,
-      type: 'Card',
+      type: fallbackComponents.card,
       props: {
         title: node.metadata?.title ?? 'Array Data',
         dataNodeId: node.id,
@@ -68,13 +92,13 @@ function buildDataNodeComponent(node: DataNode): UIComponentSpec {
         header,
         {
           id: `${baseId}-list`,
-          type: 'List',
+          type: fallbackComponents.list,
           props: {
             title: `${node.payload.length} items`,
           },
           children: node.payload.slice(0, 20).map((item, index) => ({
             id: `${baseId}-item-${index}`,
-            type: 'ListItem',
+            type: fallbackComponents.listItem,
             props: {
               text: toSafeText(item, 140),
             },
@@ -88,7 +112,7 @@ function buildDataNodeComponent(node: DataNode): UIComponentSpec {
     const payload = node.payload as { content?: string; title?: string } | string;
     return {
       id: baseId,
-      type: 'Card',
+      type: fallbackComponents.card,
       props: {
         title: typeof payload === 'object' ? payload?.title ?? 'Document' : 'Document',
         dataNodeId: node.id,
@@ -97,7 +121,7 @@ function buildDataNodeComponent(node: DataNode): UIComponentSpec {
         header,
         {
           id: `${baseId}-text`,
-          type: 'Text',
+          type: fallbackComponents.text,
           props: {
             content: toSafeText(
               typeof payload === 'string' ? payload : payload?.content ?? payload,
@@ -111,7 +135,7 @@ function buildDataNodeComponent(node: DataNode): UIComponentSpec {
 
   return {
     id: baseId,
-    type: 'Card',
+    type: fallbackComponents.card,
     props: {
       title: node.metadata?.title ?? `Data Node (${node.kind})`,
       dataNodeId: node.id,
@@ -120,7 +144,7 @@ function buildDataNodeComponent(node: DataNode): UIComponentSpec {
       header,
       {
         id: `${baseId}-text`,
-        type: 'Text',
+        type: fallbackComponents.text,
         props: {
           content: toSafeText(node.payload, 900),
         },
@@ -130,7 +154,8 @@ function buildDataNodeComponent(node: DataNode): UIComponentSpec {
 }
 
 function buildToolComponentsAndBindings(
-  tools: ToolManifest[]
+  tools: ToolManifest[],
+  fallbackComponents: FallbackComponentTypes,
 ): { components: UIComponentSpec[]; bindings: UIBinding[] } {
   if (tools.length === 0) {
     return { components: [], bindings: [] };
@@ -139,14 +164,14 @@ function buildToolComponentsAndBindings(
   const components: UIComponentSpec[] = [
     {
       id: 'tools-section',
-      type: 'Section',
+      type: fallbackComponents.section,
       props: {
         title: 'Available Actions',
         description: 'Agent-bound tools available for direct runtime execution.',
       },
       children: tools.map((tool) => ({
         id: `tool-btn-${tool.id}`,
-        type: 'Button',
+        type: fallbackComponents.button,
         props: {
           label: tool.name,
         },
@@ -188,6 +213,8 @@ export interface BuildUIFromDataOptions {
   workflowContext?: string;
   availableWorkflowContexts?: PresentationSkill[];
   newUserContext?: string;
+  /** Override semantic fallback component slots for non-default renderers. */
+  fallbackComponents?: Partial<FallbackComponentTypes>;
 }
 
 function resolveWorkflowContext(
@@ -218,7 +245,8 @@ function chooseLayout(options?: BuildUIFromDataOptions): UIRenderSpec['layout'] 
 
 function buildSkillContextComponents(
   workflowContextName: string | undefined,
-  availableWorkflowContexts: PresentationSkill[] | undefined
+  availableWorkflowContexts: PresentationSkill[] | undefined,
+  fallbackComponents: FallbackComponentTypes,
 ): UIComponentSpec[] {
   if (!workflowContextName?.trim()) return [];
   const workflowDefinition = resolveWorkflowContext(workflowContextName, availableWorkflowContexts);
@@ -246,7 +274,7 @@ function buildSkillContextComponents(
   return [
     {
       id: 'skill-section',
-      type: 'Section',
+      type: fallbackComponents.section,
       props: {
         title,
         description,
@@ -254,7 +282,7 @@ function buildSkillContextComponents(
       children: [
         {
           id: 'skill-section-summary',
-          type: 'Text',
+          type: fallbackComponents.text,
           props: {
             content: summary,
             muted: true,
@@ -274,19 +302,21 @@ export function buildUIFromData(
   tools: ToolManifest[],
   options?: BuildUIFromDataOptions
 ): PresentationProjection {
-  const dataComponents = dataNodes.map((node) => buildDataNodeComponent(node));
-  const toolProjection = buildToolComponentsAndBindings(tools);
+  const fallbackComponents = resolveFallbackComponentTypes(options?.fallbackComponents);
+  const dataComponents = dataNodes.map((node) => buildDataNodeComponent(node, fallbackComponents));
+  const toolProjection = buildToolComponentsAndBindings(tools, fallbackComponents);
   const workflow = resolveWorkflowInputs(options);
   const skillContextComponents = buildSkillContextComponents(
     workflow.name,
-    workflow.definitions
+    workflow.definitions,
+    fallbackComponents,
   );
 
   const allComponents: UIComponentSpec[] = [...skillContextComponents];
   if (dataComponents.length > 0) {
     allComponents.push({
       id: 'data-section',
-      type: 'Section',
+      type: fallbackComponents.section,
       props: {
         title: 'Data Context',
         description: `${dataNodes.length} data node(s)`,
@@ -317,7 +347,7 @@ export function extractBindingsFromSpec(spec: UIRenderSpec): PresentationPlan {
 
   const walk = (components: UIRenderSpec['components']) => {
     for (const component of components) {
-      for (const interaction of component.interactions ?? []) {
+      for (const [interactionIndex, interaction] of (component.interactions ?? []).entries()) {
         const action = interaction.tool_call
           ? {
               type: 'tool_call' as const,
@@ -351,7 +381,7 @@ export function extractBindingsFromSpec(spec: UIRenderSpec): PresentationPlan {
             };
 
         bindings.push({
-          id: `binding-${component.id}-${interaction.action}-${interaction.trigger}`,
+          id: `binding-${component.id}-${interaction.action}-${interaction.trigger}-${interactionIndex}`,
           componentId: component.id,
           trigger: interaction.trigger,
           actionMatch: interaction.action,

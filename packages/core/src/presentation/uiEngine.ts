@@ -12,6 +12,7 @@
  * - plan confidence is normalized to [0, 1]
  */
 import type { UIInteractionRecord, UIRenderSpec } from '../types';
+import { cloneRenderSpec } from '../clone';
 import {
   CURRENT_PRESENTATION_PLAN_VERSION,
   type BindingAction,
@@ -82,6 +83,7 @@ function mergeContext(base: PresentationContext, patch: Partial<PresentationCont
     availableWorkflowContexts: patch.availableWorkflowContexts ?? base.availableWorkflowContexts,
     candidateBindings: patch.candidateBindings ?? base.candidateBindings,
     currentBindings: patch.currentBindings ?? base.currentBindings,
+    fallbackComponents: patch.fallbackComponents ?? base.fallbackComponents,
     sessionHistory: patch.sessionHistory ?? base.sessionHistory,
   };
 }
@@ -140,6 +142,7 @@ export function createPresentationEngine(opts?: {
       plannerStrategy: opts?.initialContext?.plannerStrategy ?? opts?.plannerStrategy,
       planningPolicy: opts?.initialContext?.planningPolicy ?? opts?.planningPolicy,
       newUserContext: opts?.initialContext?.newUserContext,
+      fallbackComponents: opts?.initialContext?.fallbackComponents,
       sessionHistory: opts?.initialContext?.sessionHistory ?? [],
       persistentProfile: opts?.initialContext?.persistentProfile,
     },
@@ -235,6 +238,7 @@ export function createPresentationEngine(opts?: {
           requestedMode: request?.requestedMode ?? current.context.requestedMode,
           plannerStrategy: request?.plannerStrategy ?? current.context.plannerStrategy,
           planningPolicy: request?.planningPolicy ?? current.context.planningPolicy,
+          fallbackComponents: request?.fallbackComponents ?? current.context.fallbackComponents,
           candidateSpec: request?.candidateSpec === undefined
             ? current.context.candidateSpec
             : request.candidateSpec,
@@ -317,7 +321,7 @@ export function createPresentationEngine(opts?: {
     },
 
     registerBindingActionHandler(type, handler) {
-      return actionExecutor.registerHandler(type, handler as BindingActionHandler<any>);
+      return actionExecutor.registerHandler(type, handler);
     },
 
     async executeInteraction(interaction) {
@@ -378,7 +382,7 @@ export function createPresentationEngine(opts?: {
               && action.optimisticPatches
               && action.optimisticPatches.length > 0
             ) {
-              preBindingSpec = JSON.parse(JSON.stringify(workingSpec)) as UIRenderSpec;
+              preBindingSpec = cloneRenderSpec(workingSpec);
               const optimistic = applyLocalUIUpdates(
                 workingSpec,
                 action.optimisticPatches,
@@ -395,7 +399,7 @@ export function createPresentationEngine(opts?: {
             }
 
             if (policy.risk === 'risky') {
-              if (!preBindingSpec) preBindingSpec = JSON.parse(JSON.stringify(workingSpec)) as UIRenderSpec;
+              if (!preBindingSpec) preBindingSpec = cloneRenderSpec(workingSpec);
               setComponentProp(workingSpec, binding.componentId, 'busy', true);
               commitPreview(workingSpec);
             }

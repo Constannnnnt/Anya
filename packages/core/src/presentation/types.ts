@@ -49,6 +49,17 @@ export interface PresentationSkill {
 
 export type WorkflowContextDefinition = PresentationSkill;
 
+export interface FallbackComponentTypes {
+  heading: string;
+  card: string;
+  image: string;
+  list: string;
+  listItem: string;
+  text: string;
+  section: string;
+  button: string;
+}
+
 export type ToolExecutionMode = 'client' | 'server' | 'adapter';
 
 export interface ToolSchemaValidationSuccess {
@@ -222,6 +233,7 @@ export interface PresentationContext {
   plannerStrategy?: PresentationPlannerStrategyName;
   planningPolicy?: PresentationPlanningPolicy;
   newUserContext?: string;
+  fallbackComponents?: Partial<FallbackComponentTypes>;
   sessionHistory?: UIInteractionRecord[];
   persistentProfile?: string;
 }
@@ -277,4 +289,5 @@ export interface PresentationPlanRequest {
   planningPolicy?: PresentationPlanningPolicy;
   candidateSpec?: UIRenderSpec | null;
   candidateBindings?: UIBinding[];
+  fallbackComponents?: Partial<FallbackComponentTypes>;
 }

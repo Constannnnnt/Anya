@@ -5,6 +5,7 @@ export {
   type BindingValueExpression,
   type DataNode,
   type DataNodeKind,
+  type FallbackComponentTypes,
   type LocalPatchOperation,
   type PresentationContext,
   type ContextEnvelope,
@@ -31,6 +32,7 @@ export {
 } from './types';
 
 export {
+  DEFAULT_FALLBACK_COMPONENT_TYPES,
   buildUIFromData,
   extractBindingsFromSpec,
   type BuildUIFromDataOptions,
