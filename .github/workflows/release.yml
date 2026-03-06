@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      dist_tag:
+        description: npm dist-tag to publish
+        required: true
+        default: next
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Ensure release commit is versioned
+        run: npm run changeset:release-check
+
+      - name: Validate
+        run: |
+          npm run lint
+          npm run test
+          npm run build
+          node --input-type=module -e "await import('@anya-ui/core');"
+          node --input-type=module -e "await import('@anya-ui/react');"
+          node -e "require('@anya-ui/core'); require('@anya-ui/react');"
+          npx -y publint@0.3.18 packages/core
+          npx -y publint@0.3.18 packages/react
+          cd packages/core && npx -y @arethetypeswrong/cli@0.18.2 --pack . --profile node16
+          cd ../react && npx -y @arethetypeswrong/cli@0.18.2 --pack . --profile node16
+          cd ../..
+          npm audit --omit=dev
+          npm pack --dry-run --json --workspace @anya-ui/core
+          npm pack --dry-run --json --workspace @anya-ui/react
+
+      - name: Publish @anya-ui/core
+        run: npm publish --workspace @anya-ui/core --access public --provenance --tag "${{ github.event.inputs.dist_tag }}"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @anya-ui/react
+        run: npm publish --workspace @anya-ui/react --access public --provenance --tag "${{ github.event.inputs.dist_tag }}"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

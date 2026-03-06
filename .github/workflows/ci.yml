@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [18, 20, 22]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Changeset gate
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin "${{ github.base_ref }}":"refs/remotes/origin/${{ github.base_ref }}" --depth=1
+          npm run changeset:check -- "origin/${{ github.base_ref }}"
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+
+      - name: Runtime smoke (ESM + CJS)
+        run: |
+          node --input-type=module -e "await import('@anya-ui/core');"
+          node --input-type=module -e "await import('@anya-ui/react');"
+          node -e "require('@anya-ui/core'); require('@anya-ui/react');"
+
+      - name: publint
+        run: |
+          npx -y publint@0.3.18 packages/core
+          npx -y publint@0.3.18 packages/react
+
+      - name: arethetypeswrong
+        run: |
+          cd packages/core && npx -y @arethetypeswrong/cli@0.18.2 --pack . --profile node16
+          cd ../react && npx -y @arethetypeswrong/cli@0.18.2 --pack . --profile node16
+
+      - name: npm audit
+        run: npm audit --omit=dev
+
+      - name: npm pack dry-run
+        run: |
+          npm pack --dry-run --json --workspace @anya-ui/core
+          npm pack --dry-run --json --workspace @anya-ui/react
