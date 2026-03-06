@@ -4,8 +4,8 @@
  * Single responsibility: the agent's living interpretation of 
  * user behavior patterns. NOT a log — a distilled understanding.
  *
- * Sent FIRST in the system prompt, before catalog or memory,
- * so the agent understands the user before reasoning.
+ * Injected into the prompt's "Current Context" section so the
+ * agent can reason with durable user preferences each turn.
  */
 
 import type { FileStorage } from '../storage/interface';
@@ -236,7 +236,7 @@ export class AdaptiveProfile {
     }
   }
 
-  /** Get the current profile content (sent first to the agent) */
+  /** Get the current profile content for prompt injection into the current-context block. */
   getContent(): string {
     return this.content;
   }
