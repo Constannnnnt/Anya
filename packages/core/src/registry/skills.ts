@@ -5,6 +5,8 @@
  * A skill groups components into a capability (e.g. "Photo Editing").
  */
 
+import YAML from 'yaml';
+
 // ─── Skill Definition ────────────────────────────────────────────────────
 
 export interface SkillChecklistItem {
@@ -52,6 +54,10 @@ export interface SkillDefinition {
 
 type ChangeListener = () => void;
 
+function stringifyPromptYaml(value: unknown): string {
+  return YAML.stringify(value, { lineWidth: 0 }).trimEnd();
+}
+
 // ─── Registry ────────────────────────────────────────────────────────────
 
 export class SkillRegistry {
@@ -88,42 +94,52 @@ export class SkillRegistry {
     for (const fn of this.listeners) fn();
   }
 
-  private renderStringList(lines: string[], indent: string, key: string, values?: string[]): void {
-    if (!values || values.length === 0) return;
-    lines.push(`${indent}${key}:`);
-    for (const value of values) {
-      lines.push(`${indent}  - ${JSON.stringify(value)}`);
-    }
-  }
-
   /** Generate the LLM-facing skill listing in YAML format. */
   toLLMSkills(): string {
-    const lines: string[] = ['skills:'];
-    for (const skill of this.skills.values()) {
-      lines.push(`  - name: ${skill.name}`);
-      lines.push(`    description: ${skill.description}`);
-      lines.push(`    components: [${skill.components.join(', ')}]`);
-      lines.push(`    expandable: ${skill.expandable ?? false}`);
-      lines.push(`    layout: ${skill.defaultLayout ?? 'stack'}`);
-      this.renderStringList(lines, '    ', 'context_inputs', skill.contextInputs);
-      this.renderStringList(lines, '    ', 'output_expectations', skill.outputExpectations);
-      if (skill.sop) {
-        lines.push('    sop:');
-        lines.push(`      objective: ${JSON.stringify(skill.sop.objective)}`);
-        this.renderStringList(lines, '      ', 'when_to_use', skill.sop.whenToUse);
-        this.renderStringList(lines, '      ', 'steps', skill.sop.steps);
-        this.renderStringList(lines, '      ', 'guardrails', skill.sop.guardrails);
-        if (skill.sop.checklist && skill.sop.checklist.length > 0) {
-          lines.push('      checklist:');
-          for (const item of skill.sop.checklist) {
-            lines.push(`        - id: ${item.id}`);
-            lines.push(`          title: ${JSON.stringify(item.title)}`);
-            lines.push(`          done_when: ${JSON.stringify(item.doneWhen)}`);
-            lines.push(`          required: ${item.required !== false}`);
-          }
+    const payload = {
+      skills: Array.from(this.skills.values()).map((skill) => {
+        const entry: Record<string, unknown> = {
+          name: skill.name,
+          description: skill.description,
+          components: [...skill.components],
+          expandable: skill.expandable ?? false,
+          layout: skill.defaultLayout ?? 'stack',
+        };
+
+        if (skill.contextInputs?.length) {
+          entry.context_inputs = [...skill.contextInputs];
         }
-      }
-    }
-    return lines.join('\n');
+        if (skill.outputExpectations?.length) {
+          entry.output_expectations = [...skill.outputExpectations];
+        }
+        if (skill.sop) {
+          const sop: Record<string, unknown> = {
+            objective: skill.sop.objective,
+          };
+          if (skill.sop.whenToUse?.length) {
+            sop.when_to_use = [...skill.sop.whenToUse];
+          }
+          if (skill.sop.steps?.length) {
+            sop.steps = [...skill.sop.steps];
+          }
+          if (skill.sop.guardrails?.length) {
+            sop.guardrails = [...skill.sop.guardrails];
+          }
+          if (skill.sop.checklist?.length) {
+            sop.checklist = skill.sop.checklist.map((item) => ({
+              id: item.id,
+              title: item.title,
+              done_when: item.doneWhen,
+              required: item.required !== false,
+            }));
+          }
+          entry.sop = sop;
+        }
+
+        return entry;
+      }),
+    };
+
+    return stringifyPromptYaml(payload);
   }
 }

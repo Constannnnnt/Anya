@@ -5,6 +5,7 @@
  * Holds component schemas, descriptions, and generates LLM-facing catalogs.
  */
 
+import YAML from 'yaml';
 import { z, type ZodType } from 'zod';
 
 // ─── Component Definition ────────────────────────────────────────────────
@@ -31,6 +32,19 @@ export interface ComponentDefinition<T extends ZodType = ZodType> {
 }
 
 type ChangeListener = () => void;
+
+function stringifyPromptYaml(value: unknown): string {
+  return YAML.stringify(value, { lineWidth: 0 }).trimEnd();
+}
+
+function getPropKeys(schema: ZodType): string[] {
+  if (!(schema instanceof z.ZodObject)) {
+    return [];
+  }
+
+  const shape = schema.shape as Record<string, ZodType>;
+  return Object.keys(shape);
+}
 
 export interface ComponentCatalogOptions {
   /**
@@ -120,34 +134,31 @@ export class ComponentCatalog {
    * what tools are available.
    */
   toLLMCatalog(): string {
-    const lines: string[] = ['components:'];
-    for (const comp of this.components.values()) {
-      lines.push(`  - name: ${comp.name}`);
-      lines.push(`    description: ${comp.description}`);
-      if (comp.propsSchema instanceof z.ZodObject) {
-        const shape = comp.propsSchema.shape as Record<string, ZodType>;
-        const propKeys = Object.keys(shape);
-        if (propKeys.length > 0) {
-          lines.push(`    props: [${propKeys.join(', ')}]`);
+    const payload = {
+      components: Array.from(this.components.values()).map((comp) => {
+        const entry: Record<string, unknown> = {
+          name: comp.name,
+          description: comp.description,
+        };
+
+        const props = getPropKeys(comp.propsSchema);
+        if (props.length > 0) {
+          entry.props = props;
         }
-      }
-      if (comp.tags?.length) {
-        lines.push(`    tags: [${comp.tags.join(', ')}]`);
-      }
-      if (comp.capabilities?.length) {
-        lines.push(`    capabilities: [${comp.capabilities.join(', ')}]`);
-      }
-      if (comp.examples?.length) {
-        lines.push(`    examples:`);
-        for (const ex of comp.examples) {
-          const exLines = ex.split('\n');
-          lines.push(`      - |`);
-          for (const el of exLines) {
-            lines.push(`          ${el}`);
-          }
+        if (comp.tags?.length) {
+          entry.tags = [...comp.tags];
         }
-      }
-    }
-    return lines.join('\n');
+        if (comp.capabilities?.length) {
+          entry.capabilities = [...comp.capabilities];
+        }
+        if (comp.examples?.length) {
+          entry.examples = [...comp.examples];
+        }
+
+        return entry;
+      }),
+    };
+
+    return stringifyPromptYaml(payload);
   }
 }
