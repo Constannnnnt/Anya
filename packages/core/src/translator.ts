@@ -18,6 +18,12 @@ import { nextGeneratedId } from './id';
 
 // ─── Decoder ─────────────────────────────────────────────────────────────
 
+export interface StableSpecCandidate {
+  raw: string;
+  trimmedLineCount: number;
+  retentionRatio: number;
+}
+
 function nextId(): string {
   return nextGeneratedId('ui');
 }
@@ -56,6 +62,26 @@ function looksLikeYaml(text: string): boolean {
   return /^(spec_version:|skill:|layout:|components:|---|\w+:)/.test(firstLine);
 }
 
+function buildYamlPrefixCandidates(rawYaml: string, maxTrims = 80): string[] {
+  const lines = rawYaml.split('\n');
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+  const maxDrops = Math.min(Math.max(lines.length - 1, 0), maxTrims);
+
+  for (let drop = 0; drop <= maxDrops; drop += 1) {
+    const slice = lines.slice(0, lines.length - drop);
+    while (slice.length > 0 && slice[slice.length - 1].trim() === '') {
+      slice.pop();
+    }
+    const candidate = slice.join('\n').trim();
+    if (!candidate || seen.has(candidate)) continue;
+    seen.add(candidate);
+    candidates.push(candidate);
+  }
+
+  return candidates;
+}
+
 function fixUnquotedSemicolons(text: string): string {
   return text.replace(
     /^(\s+)(allow|style|className|class):\s+([^"\s#\[{].*)$/gm,
@@ -68,6 +94,57 @@ function fixUnquotedSemicolons(text: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function looksLikeSpecEnvelope(value: unknown): value is Record<string, unknown> {
+  return isRecord(value)
+    && 'layout' in value
+    && 'components' in value
+    && 'spec_version' in value;
+}
+
+function tryParseSpecEnvelope(rawYaml: string): boolean {
+  try {
+    const parsed = YAML.parse(fixUnquotedSemicolons(rawYaml));
+    return looksLikeSpecEnvelope(parsed);
+  } catch {
+    return false;
+  }
+}
+
+export function findStableSpecCandidate(
+  raw: string,
+  options?: {
+    maxTrailingLineDrops?: number;
+    minimumRetentionRatio?: number;
+  }
+): StableSpecCandidate | null {
+  const cleaned = extractYaml(raw);
+  const normalized = cleaned.trim();
+  if (!normalized) return null;
+
+  const candidates = buildYamlPrefixCandidates(
+    normalized,
+    options?.maxTrailingLineDrops ?? 80,
+  );
+  const minimumRetentionRatio = options?.minimumRetentionRatio ?? 0;
+  const originalLineCount = normalized.split('\n').length;
+
+  for (const candidate of candidates) {
+    if (!tryParseSpecEnvelope(candidate)) continue;
+    const retentionRatio = normalized.length > 0
+      ? candidate.length / normalized.length
+      : 1;
+    if (retentionRatio < minimumRetentionRatio) continue;
+
+    return {
+      raw: candidate,
+      trimmedLineCount: Math.max(0, originalLineCount - candidate.split('\n').length),
+      retentionRatio,
+    };
+  }
+
+  return null;
 }
 
 const VALID_LAYOUTS = new Set<UIRenderSpec['layout']>(['stack', 'row', 'grid', 'tabs', 'split']);
@@ -224,13 +301,13 @@ export function decode(
 
   if (!cleaned.trim()) {
     logger.warn('[Translator.decode] Empty YAML after extraction.');
-    return withSpecVersion({ layout: 'stack', components: [] });
+    throw new Error('[Translator.decode] Empty YAML after extraction.');
   }
 
   // Gracefully handle partial/truncated YAML like just "layout: "
   if (/^layout:\s*$/.test(cleaned.trim())) {
     logger.warn('[Translator.decode] LLM returned truncated YAML (only layout key).');
-    return withSpecVersion({ layout: 'stack', components: [] });
+    throw new Error('[Translator.decode] LLM returned truncated YAML (only layout key).');
   }
 
 let parsed: Record<string, unknown>;
@@ -244,7 +321,7 @@ let parsed: Record<string, unknown>;
 
   if (!parsed || typeof parsed !== 'object') {
     logger.warn('[Translator.decode] YAML did not parse to object.');
-    return withSpecVersion({ layout: 'stack', components: [] });
+    throw new Error('[Translator.decode] YAML did not parse to an object spec.');
   }
 
   const normalized = normalizeUISpecEnvelope(parsed);
@@ -252,7 +329,8 @@ let parsed: Record<string, unknown>;
   const rawComponents = normalizeRawComponents(normalized.components);
 
   if ('components' in normalized && !Array.isArray(normalized.components)) {
-    logger.warn('[Translator.decode] "components" is not an array. Falling back to empty components list.');
+    logger.warn('[Translator.decode] "components" is not an array.');
+    throw new Error('[Translator.decode] "components" must be an array.');
   }
 
   if (rawComponents.length === 0) {
@@ -274,6 +352,18 @@ let parsed: Record<string, unknown>;
   });
 }
 
+function sanitizeRawProps(props: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(props)) {
+    if (Array.isArray(v)) {
+      result[k] = v.filter(item => item !== null && item !== undefined);
+    } else {
+      result[k] = v;
+    }
+  }
+  return result;
+}
+
 function decodeComponent(
   raw: Record<string, unknown>,
   catalog: ComponentCatalog
@@ -283,11 +373,15 @@ function decodeComponent(
 
   const def = catalog.get(type);
   const rawProps = isRecord(raw.props) ? raw.props : {};
-  let props = rawProps;
+  let props = sanitizeRawProps(rawProps);
 
   if (def) {
-    const parseResult = def.propsSchema.safeParse(rawProps);
-    props = parseResult.success ? parseResult.data : rawProps;
+    const parseResult = def.propsSchema.safeParse(props);
+    if (parseResult.success) {
+      props = parseResult.data;
+    } else {
+      getLogger().warn(`[Translator.decodeComponent] Validation failed for ${type}:`, parseResult.error.format());
+    }
   }
 
   // Coerce string style to object so React never receives a string
@@ -311,7 +405,7 @@ function decodeComponent(
     ? raw.draggable
     : undefined;
 
-  return {
+    return {
     id: componentId,
     type,
     props,

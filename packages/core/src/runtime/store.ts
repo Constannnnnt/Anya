@@ -72,7 +72,7 @@ function runEffects(
   effectContext: RuntimeEffectContext,
   onEffectError: RuntimeEffectErrorHandler
 ) {
-  for (const effect of effects) {
+  for (const effect of [...effects]) {
     try {
       const result = effect(event, effectContext);
       if (result && typeof (result as Promise<void>).then === 'function') {
@@ -89,7 +89,7 @@ function notifyStateListeners(
   event: RuntimeEvent,
   onEffectError: RuntimeEffectErrorHandler
 ) {
-  for (const listener of listeners) {
+  for (const listener of [...listeners]) {
     try {
       listener();
     } catch (error) {
@@ -104,7 +104,7 @@ function notifyEventListeners(
   state: RuntimeState,
   onEffectError: RuntimeEffectErrorHandler
 ) {
-  for (const { pattern, listener } of eventListeners) {
+  for (const { pattern, listener } of [...eventListeners]) {
     if (!matchesPattern(pattern, event.type)) continue;
     try {
       listener(event, state);

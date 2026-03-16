@@ -1,7 +1,7 @@
 /**
  * @anya-ui/core — InMemoryStorage
  *
- * In-memory fallback for environments without file access.
+ * In-memory storage adapter for environments without file access.
  */
 
 import type { FileStorage } from './interface';

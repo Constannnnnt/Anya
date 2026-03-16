@@ -13,12 +13,12 @@ import {
   type PresentationPlanningPolicy,
   type UIBinding,
 } from './types';
-import { buildUIFromData, extractBindingsFromSpec } from './uiBuilder';
+import { buildProjectionFromContext, extractBindingsFromSpec } from './uiBuilder';
 
 interface CandidateProjection {
   spec: UIRenderSpec;
   bindings: UIBinding[];
-  source: 'agent' | 'fallback';
+  source: 'agent' | 'projection';
 }
 
 interface ResolvedPlanningPolicy {
@@ -131,16 +131,16 @@ function resolveCandidateProjection(context: PresentationContext): CandidateProj
     };
   }
 
-  const fallback = buildUIFromData(context.dataNodes, context.tools, {
+  const projection = buildProjectionFromContext(context.dataNodes, context.tools, {
     workflowContext: resolveWorkflowContext(context),
     availableWorkflowContexts: resolveAvailableWorkflowContexts(context),
     newUserContext: context.newUserContext,
-    fallbackComponents: context.fallbackComponents,
+    projectionComponents: context.projectionComponents,
   });
   return {
-    spec: fallback.spec,
-    bindings: fallback.bindings,
-    source: 'fallback',
+    spec: projection.spec,
+    bindings: projection.bindings,
+    source: 'projection',
   };
 }
 
@@ -245,7 +245,7 @@ function summarizePatchRationale(source: CandidateProjection['source'], reasons:
   if (source === 'agent') {
     return 'Patch current UI using the agent-provided candidate spec and bindings.';
   }
-  return 'Patch current UI using deterministic fallback projection from current data/tools.';
+  return 'Patch current UI using deterministic projection from current data/tools.';
 }
 
 function resolveRebuildConfidence(reasons: string[], policy: ResolvedPlanningPolicy): number {
@@ -306,7 +306,7 @@ function computePlannerInputs(
 /**
  * Analyzes the current UI context to determine the confidence and strategy for creating
  * the next interface presentation. Generates a 'patch' plan if confidence is high, or
- * falls back to a full 'rebuild' plan to ensure deterministic state transitions.
+ * escalates to a full 'rebuild' plan to ensure deterministic state transitions.
  */
 export function planUIUpdate(context: PresentationContext): PresentationPlan {
   const strategyName = resolvePlannerStrategyName(context);

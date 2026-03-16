@@ -4,7 +4,9 @@ import type {
   SessionIntentUpdatedEvent,
   SessionStatusSetEvent,
   InteractionRecordedEvent,
+  InteractionMeasuredEvent,
   SpecDecodedEvent,
+  UiPresentedEvent,
   SpecDecodeFailedEvent,
   ThemeUpdatedEvent,
   MemoryHydratedEvent,
@@ -171,6 +173,11 @@ const handleMemoryHydrated: RuntimeHandler<MemoryHydratedEvent> = (state, event)
   };
 };
 
+const handleInteractionMeasured: RuntimeHandler<InteractionMeasuredEvent> = (state, event) => ({
+  ...state,
+  lastEventId: event.id,
+});
+
 const handlePassthrough: RuntimeHandler = (state, event) => ({
   ...state,
   lastEventId: event.id,
@@ -189,7 +196,9 @@ const handlers: { [K in RuntimeEvent['type']]: RuntimeHandler<Extract<RuntimeEve
   'qa.passed': handlePassthrough,
   'qa.failed': handlePassthrough,
   'spec.decoded': handleSpecDecoded,
+  'ui.presented': handlePassthrough,
   'spec.decode_failed': handleSpecDecodeFailed,
+  'interaction.measured': handleInteractionMeasured,
   'theme.updated': handleThemeUpdated,
   'memory.hydrated': handleMemoryHydrated,
   'preference.explicit': handlePassthrough,

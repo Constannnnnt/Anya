@@ -98,8 +98,6 @@ export function validateSpecForPublish(
   const interaction = validateInteractionResolvability(spec, {
     knownTools: options?.knownTools,
     knownComponentIds: knownIds,
-    allowUnknownToolWithNavigationFallback:
-      options?.allowUnknownToolWithNavigationFallback,
   });
   for (const failure of interaction.failures) {
     failures.push({
@@ -119,7 +117,7 @@ export function validateSpecForPublish(
 
 /**
  * Deterministic post-QA repair:
- * add a fallback onClick interaction for Buttons that do not define one.
+ * add a required onClick interaction for Buttons that do not define one.
  */
 export function enforceButtonOnClickContract(spec: UIRenderSpec): ButtonContractRepairResult {
   const repairedButtonIds: string[] = [];
@@ -176,7 +174,7 @@ function readButtonLabel(component: UIComponentSpec): string | undefined {
   return undefined;
 }
 
-function buildFallbackButtonInteraction(component: UIComponentSpec): NonNullable<UIComponentSpec['interactions']>[number] {
+function buildRequiredButtonInteraction(component: UIComponentSpec): NonNullable<UIComponentSpec['interactions']>[number] {
   const buttonLabel = readButtonLabel(component);
   return {
     trigger: 'onClick',
@@ -203,7 +201,7 @@ function repairButtons(
       if (!hasOnClick) {
         current = {
           ...current,
-          interactions: [...interactions, buildFallbackButtonInteraction(component)],
+          interactions: [...interactions, buildRequiredButtonInteraction(component)],
         };
         repairedButtonIds.push(component.id);
         componentChanged = true;

@@ -21,7 +21,6 @@ import { applyLocalUIUpdates } from './uiUpdater';
 type DataBindingSelector = {
   nodeId: string;
   path?: string;
-  fallback?: unknown;
 };
 
 function isDataBindingSelector(value: unknown): value is DataBindingSelector {
@@ -34,7 +33,7 @@ function isDataBindingSelector(value: unknown): value is DataBindingSelector {
   return true;
 }
 
-function getByPath(input: unknown, path: string): unknown {
+export function getByPath(input: unknown, path: string): unknown {
   if (!path) return input;
   const segments = path.split('.').filter(Boolean);
   let current: unknown = input;
@@ -43,6 +42,20 @@ function getByPath(input: unknown, path: string): unknown {
     current = (current as Record<string, unknown>)[segment];
   }
   return current;
+}
+
+export function setDeepValue(obj: any, path: string, value: any): void {
+  if (!path) return;
+  const segments = path.replace(/\[(\w+)\]/g, '.$1').split('.').filter(Boolean);
+  let current = obj;
+  for (let i = 0; i < segments.length - 1; i++) {
+    const segment = segments[i];
+    if (!(segment in current)) {
+      current[segment] = {};
+    }
+    current = current[segment];
+  }
+  current[segments[segments.length - 1]] = value;
 }
 
 function findDataNode(dataNodes: DataNode[], id: string): DataNode | undefined {
@@ -64,34 +77,43 @@ export function resolveBindingValue(
   expression: BindingValueExpression | undefined,
   context: BindingExecutionContext
 ): unknown {
-  if (!expression || typeof expression !== 'object' || Array.isArray(expression)) {
+  if (!expression || typeof expression !== 'object') {
     return expression;
   }
 
+  if (Array.isArray(expression)) {
+    return expression.map((item) => resolveBindingValue(item as BindingValueExpression, context));
+  }
+
   if ('$event' in expression && typeof expression.$event === 'string') {
-    return getByPath(context.interaction, expression.$event);
+    return context.interaction ? getByPath(context.interaction, expression.$event) : undefined;
   }
 
   if ('$result' in expression && typeof expression.$result === 'string') {
-    return getByPath(context.result, expression.$result);
+    return context.result ? getByPath(context.result, expression.$result) : undefined;
   }
 
   if (
     '$data' in expression
-    && typeof expression.$data === 'object'
-    && expression.$data !== null
-    && isDataBindingSelector(expression.$data)
+    && typeof (expression as any).$data === 'object'
+    && (expression as any).$data !== null
+    && isDataBindingSelector((expression as any).$data)
   ) {
-    const selector = expression.$data;
+    const selector = (expression as any).$data;
     const node = findDataNode(context.dataNodes, selector.nodeId);
-    if (!node) return selector.fallback;
+    if (!node) return undefined;
     const extracted = selector.path
       ? getByPath(node.payload, selector.path)
       : node.payload;
-    return extracted === undefined ? selector.fallback : extracted;
+    return extracted;
   }
 
-  return expression;
+  // Plain object: recurse into properties
+  const resolved: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(expression)) {
+    resolved[key] = resolveBindingValue(value as BindingValueExpression, context);
+  }
+  return resolved;
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -302,8 +324,7 @@ export class ToolRuntime {
   }
 
   unregisterTool(toolId: string): void {
-    this.tools.delete(toolId);
-    this.handlers.delete(toolId);
+    this.unregisterToolIfCurrent(toolId);
   }
 
   listTools(): ToolManifest[] {
@@ -313,8 +334,32 @@ export class ToolRuntime {
   registerHandler(toolId: string, handler: ToolHandler): () => void {
     this.handlers.set(toolId, handler);
     return () => {
-      this.handlers.delete(toolId);
+      if (this.handlers.get(toolId) === handler) {
+        this.handlers.delete(toolId);
+      }
     };
+  }
+
+  clearHandler(toolId: string): void {
+    this.handlers.delete(toolId);
+  }
+
+  getHandler(toolId: string): ToolHandler | undefined {
+    return this.handlers.get(toolId);
+  }
+
+  unregisterToolIfCurrent(toolId: string, expectedTool?: ToolManifest): void {
+    const currentTool = this.tools.get(toolId);
+    if (!currentTool) {
+      return;
+    }
+
+    if (expectedTool && currentTool !== expectedTool) {
+      return;
+    }
+
+    this.tools.delete(toolId);
+    this.handlers.delete(toolId);
   }
 
   async executeToolCall(action: Extract<BindingAction, { type: 'tool_call' }>, input: {
@@ -555,6 +600,25 @@ async function defaultCompositeHandler(
 }
 
 
+async function defaultCalculationHandler(
+  input: Omit<BindingActionExecutionInput, 'action'> & {
+    action: Extract<BindingAction, { type: 'tool_call' } & { toolId: 'register_calculation' }>;
+  }
+): Promise<BindingExecutionOutcome> {
+  const { startedAt, baseRecord } = createBaseRecord(input);
+  // This is a meta-tool handled directly by the engine usually, 
+  // but we can implementation a placeholder or a direct registration if we have engine access.
+  // For now, we'll return success and let the engine's registerTool handle the logic.
+  return {
+    updatedSpec: input.spec,
+    record: {
+      ...baseRecord,
+      durationMs: Date.now() - startedAt,
+      status: 'success',
+    },
+  };
+}
+
 async function defaultUrlNavigationHandler(
   input: Omit<BindingActionExecutionInput, 'action'> & {
     action: Extract<BindingAction, { type: 'url_navigation' }>;
@@ -606,7 +670,9 @@ export class BindingActionExecutor {
     };
     this.handlers.set(type, wrappedHandler);
     return () => {
-      this.handlers.delete(type);
+      if (this.handlers.get(type) === wrappedHandler) {
+        this.handlers.delete(type);
+      }
     };
   }
 

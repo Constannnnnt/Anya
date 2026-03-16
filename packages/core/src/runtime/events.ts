@@ -4,6 +4,9 @@
  */
 import type {
   AgentState,
+  InteractionAction,
+  UIPresentedSurface,
+  UIInteractionMeasurement,
   ThemeTokens,
   UIInteractionRecord,
   UIRenderSpec,
@@ -152,9 +155,25 @@ export type SpecDecodedEvent = RuntimeEventEnvelope<
   { spec: UIRenderSpec }
 >;
 
+export type UiPresentedEvent = RuntimeEventEnvelope<
+  'ui.presented',
+  { surface: UIPresentedSurface }
+>;
+
 export type SpecDecodeFailedEvent = RuntimeEventEnvelope<
   'spec.decode_failed',
   { error: string }
+>;
+
+export type InteractionMeasuredEvent = RuntimeEventEnvelope<
+  'interaction.measured',
+  {
+    interactionEventId: string;
+    elementId: string;
+    componentName: string;
+    action: InteractionAction;
+    measurement: UIInteractionMeasurement;
+  }
 >;
 
 export type ThemeUpdatedEvent = RuntimeEventEnvelope<
@@ -191,7 +210,9 @@ export type RuntimeEvent =
   | QaPassedEvent
   | QaFailedEvent
   | SpecDecodedEvent
+  | UiPresentedEvent
   | SpecDecodeFailedEvent
+  | InteractionMeasuredEvent
   | ThemeUpdatedEvent
   | MemoryHydratedEvent
   | PreferenceExplicitEvent

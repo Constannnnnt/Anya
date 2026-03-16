@@ -1,6 +1,7 @@
 export {
   createInitialRuntimeState,
   createRuntimeEvent,
+  type InteractionMeasuredEvent,
   type IntentUpdateMode,
   type RuntimeEvent,
   type RuntimeEventEnvelope,
@@ -8,6 +9,7 @@ export {
   type RuntimeHydrationState,
   type RuntimeSessionState,
   type RuntimeState,
+  type UiPresentedEvent,
 } from './events';
 
 export type {

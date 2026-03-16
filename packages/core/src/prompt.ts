@@ -101,10 +101,21 @@ export function buildSystemPrompt(
         '3. Create semantic connections: Group related interactive components together visually (e.g., a Video with its control Buttons in the same Card).',
         '4. Integrate gracefully: Merge new content with old content rather than blindly appending.',
         '',
+        '# ICON RULES',
+        '- Do not add `icon` props to `ListItem` or `TimelineItem` unless the user explicitly asks for icons.',
+        '- If icons are requested, use simple Lucide-style names such as `network`, `split`, `list-ordered`, `play`, or `video`.',
+        '',
         '# MEDIA COMPONENT SELECTION',
-        '- Use `Video` for local/self-hosted video files (MP4, WebM, etc).',
-        '- Use `Iframe` for external/online videos and embeds (YouTube, Vimeo, etc).',
+        '- Use `Video` only for direct media file URLs (MP4, WebM, Ogg, etc).',
+        '- Do not use `Video` or `Iframe` for YouTube/Vimeo page URLs in this environment. For those, render a `Link` or `Button` that opens the source externally.',
+        '- Use `Iframe` only for non-video embedded documents or sites when the user explicitly wants an in-app embed.',
         '- Use `Image` for images (jpg, png, gif, webp).',
+        '',
+        '# MERMAID DIAGRAMS',
+        '- Use YAML block scalar `|` for the `definition` prop.',
+        '- Keep diagrams simple: prefer `graph LR` or `graph TD`.',
+        '- Use `-->` arrows. Use plain text labels (e.g., `A[Start]` not `A["Start"]`).',
+        '- Do NOT add `style` or `classDef` directives — the component handles theming.',
         '',
         rawResponseInstruction,
       ].join('\n')
@@ -114,7 +125,11 @@ export function buildSystemPrompt(
   // ── Section 2: Available Tools (Component Catalog) ──────────────────
   sections.push('# Your Tools');
   sections.push('Each tool below can be used standalone or nested inside other tools as children.');
-  sections.push(catalog.toLLMCatalog());
+  if (opts?.selectedComponents && opts.selectedComponents.length > 0 && !opts.fullCatalog) {
+    sections.push(catalog.toLLMDetailedCatalog(opts.selectedComponents));
+  } else {
+    sections.push(catalog.toLLMCatalog());
+  }
   sections.push('');
 
   // ── Section 3: Composition Guide + Examples ─────────────────────────
@@ -309,4 +324,81 @@ export function buildResponseFormatBlock(format: 'yaml' | 'json'): string {
     '- `tabs` — mutually exclusive content views (3+ modes)',
     '- Use `FlexRow` INSIDE a layout for explicit inline composition within a pane.',
   ].join('\n');
+}
+
+// ─── Progressive Disclosure ─────────────────────────────────────────────
+
+/**
+ * Build a lightweight Round 1 prompt for component selection.
+ * The LLM sees only component names, descriptions, and tags,
+ * then picks which ones are relevant to the user's message.
+ */
+export function buildSelectionPrompt(
+  catalog: ComponentCatalog,
+  userMessage: string,
+): string {
+  const sections: string[] = [];
+
+  sections.push([
+    '# ROLE',
+    'You are a UI Component Selector. Given a user request and a catalog of available UI components, select the components most likely needed to build the interface.',
+    '',
+    '# RULES',
+    '- Always include layout containers (Container, FlexRow, FlexCol, Card, Section) when the request involves any visual structure.',
+    '- Always include Text and Heading for any content display.',
+    '- Select ALL components that could plausibly be used — it is better to over-select than to miss a needed component.',
+    '- Return ONLY a YAML list of component names. No explanations.',
+  ].join('\n'));
+  sections.push('');
+
+  sections.push('# Available Components');
+  sections.push(catalog.toLLMSummary());
+  sections.push('');
+
+  sections.push('# User Request');
+  sections.push(userMessage);
+  sections.push('');
+
+  sections.push([
+    '# Response Format',
+    'Respond with ONLY a YAML list:',
+    '```',
+    'selected_components:',
+    '  - ComponentName1',
+    '  - ComponentName2',
+    '```',
+  ].join('\n'));
+
+  return sections.join('\n');
+}
+
+/**
+ * Parse the LLM's Round 1 response to extract selected component names.
+ * Accepts YAML with `selected_components: [...]` or a plain list.
+ */
+export function parseSelectionResponse(
+  raw: string,
+  catalog: ComponentCatalog,
+): string[] {
+  const cleaned = raw
+    .replace(/```(?:ya?ml)?/gi, '')
+    .replace(/```/g, '')
+    .trim();
+
+  // Try YAML-style parsing: extract names after "selected_components:"
+  const match = cleaned.match(/selected_components:\s*\n([\s\S]*)/i);
+  const block = match ? match[1] : cleaned;
+
+  const names: string[] = [];
+  for (const line of block.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    // Match "- ComponentName" pattern
+    const itemMatch = trimmed.match(/^-\s*["']?([A-Za-z][A-Za-z0-9]*)["']?\s*$/);
+    if (itemMatch && catalog.has(itemMatch[1])) {
+      names.push(itemMatch[1]);
+    }
+  }
+
+  return [...new Set(names)];
 }

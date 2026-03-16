@@ -12,7 +12,7 @@ import type {
   ToolManifest,
   UIBinding,
   DataNode,
-  FallbackComponentTypes,
+  ProjectionComponentTypes,
 } from './types';
 import { planUIUpdate } from './updatePlanner';
 import type {
@@ -35,7 +35,7 @@ export interface PresentationRequest {
   plannerStrategy?: PresentationPlannerStrategyName;
   planningPolicy?: PresentationPlanningPolicy;
   userContext?: string;
-  fallbackComponents?: Partial<FallbackComponentTypes>;
+  projectionComponents?: Partial<ProjectionComponentTypes>;
   currentSpec?: UIRenderSpec | null;
   currentBindings?: UIBinding[];
   sessionHistory?: UIInteractionRecord[];
@@ -69,7 +69,7 @@ export function toPresentationContext(input: PresentationRequest): PresentationC
     currentSpec: input.currentSpec ?? null,
     currentBindings: input.currentBindings ?? [],
     newUserContext: input.userContext,
-    fallbackComponents: input.fallbackComponents,
+    projectionComponents: input.projectionComponents,
     sessionHistory: input.sessionHistory,
     persistentProfile: input.persistentProfile,
   };

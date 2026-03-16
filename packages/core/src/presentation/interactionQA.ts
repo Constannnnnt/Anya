@@ -33,11 +33,6 @@ export interface InteractionQAOptions {
   knownTools?: Set<string>;
   /** Set of known component IDs in the current spec. Auto-computed if not provided. */
   knownComponentIds?: Set<string>;
-  /**
-   * When true, unknown tool_call names are allowed if the interaction carries
-   * an explicit URL/route fallback (directly or in tool_call parameters).
-   */
-  allowUnknownToolWithNavigationFallback?: boolean;
 }
 
 // ─── Validator ───────────────────────────────────────────────────────────
@@ -68,7 +63,7 @@ export function validateInteractionResolvability(
         interactionIndex: i,
       };
 
-      validateInteraction(interaction, context, knownIds, knownTools, options, failures);
+      validateInteraction(interaction, context, knownIds, knownTools, failures);
     }
   });
 
@@ -85,7 +80,6 @@ function validateInteraction(
   context: { componentId: string; componentType: string; interactionIndex: number },
   knownIds: Set<string>,
   knownTools: Set<string> | undefined,
-  options: InteractionQAOptions | undefined,
   failures: InteractionQAFailure[],
 ): void {
   const hasToolCall = Boolean(interaction.tool_call?.name);
@@ -106,16 +100,11 @@ function validateInteraction(
 
   // Validate tool_call if present
   if (hasToolCall && knownTools && !knownTools.has(interaction.tool_call!.name)) {
-    const allowUnknownToolWithFallback =
-      options?.allowUnknownToolWithNavigationFallback === true
-      && hasNavigationFallback(interaction);
-    if (!allowUnknownToolWithFallback) {
-      failures.push({
-        ...context,
-        code: 'tool_call_unknown_tool',
-        message: `tool_call references unknown tool: "${interaction.tool_call!.name}".`,
-      });
-    }
+    failures.push({
+      ...context,
+      code: 'tool_call_unknown_tool',
+      message: `tool_call references unknown tool: "${interaction.tool_call!.name}".`,
+    });
   }
 
   // Validate navigation fields if present
@@ -152,39 +141,6 @@ function collectComponentIds(components: UIComponentSpec[]): Set<string> {
   const ids = new Set<string>();
   walkComponents(components, (c) => ids.add(c.id));
   return ids;
-}
-
-const URL_FALLBACK_PARAM_KEYS = new Set([
-  'url',
-  'href',
-  'resourceUrl',
-  'link',
-]);
-
-function hasNavigationFallback(interaction: UIInteractionDefinition): boolean {
-  if (interaction.url?.trim() || interaction.route?.trim()) {
-    return true;
-  }
-  return hasUrlLikeValue(interaction.tool_call?.parameters);
-}
-
-function hasUrlLikeValue(value: unknown, depth = 0): boolean {
-  if (depth > 5 || value == null) return false;
-  if (typeof value === 'string') {
-    return /^https?:\/\/\S+/i.test(value.trim());
-  }
-  if (Array.isArray(value)) {
-    return value.some((entry) => hasUrlLikeValue(entry, depth + 1));
-  }
-  if (typeof value !== 'object') return false;
-
-  const record = value as Record<string, unknown>;
-  for (const [key, nested] of Object.entries(record)) {
-    if (URL_FALLBACK_PARAM_KEYS.has(key) && hasUrlLikeValue(nested, depth + 1)) {
-      return true;
-    }
-  }
-  return Object.values(record).some((nested) => hasUrlLikeValue(nested, depth + 1));
 }
 
 function walkComponents(

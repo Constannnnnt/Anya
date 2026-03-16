@@ -49,7 +49,7 @@ export interface PresentationSkill {
 
 export type WorkflowContextDefinition = PresentationSkill;
 
-export interface FallbackComponentTypes {
+export interface ProjectionComponentTypes {
   heading: string;
   card: string;
   image: string;
@@ -112,7 +112,7 @@ export interface ToolManifest {
 export type BindingValueExpression =
   | unknown
   | { $event: string }
-  | { $data: { nodeId: string; path?: string; fallback?: unknown } }
+  | { $data: { nodeId: string; path?: string } }
   | { $result: string };
 
 export interface LocalPatchOperation {
@@ -158,6 +158,12 @@ export type BindingAction =
       url?: string;
       route?: string;
       description?: string;
+    }
+  | {
+      type: 'data_update';
+      nodeId: string;
+      path?: string;
+      value: BindingValueExpression;
     }
   | {
       type: 'composite';
@@ -233,7 +239,7 @@ export interface PresentationContext {
   plannerStrategy?: PresentationPlannerStrategyName;
   planningPolicy?: PresentationPlanningPolicy;
   newUserContext?: string;
-  fallbackComponents?: Partial<FallbackComponentTypes>;
+  projectionComponents?: Partial<ProjectionComponentTypes>;
   sessionHistory?: UIInteractionRecord[];
   persistentProfile?: string;
 }
@@ -255,7 +261,7 @@ export interface PresentationPlanApplicationResult {
   spec: UIRenderSpec;
   bindings: UIBinding[];
   modeApplied: PresentationMode;
-  fallbackToRebuild: boolean;
+  rebuildEscalated: boolean;
   appliedOperations: number;
 }
 
@@ -289,5 +295,5 @@ export interface PresentationPlanRequest {
   planningPolicy?: PresentationPlanningPolicy;
   candidateSpec?: UIRenderSpec | null;
   candidateBindings?: UIBinding[];
-  fallbackComponents?: Partial<FallbackComponentTypes>;
+  projectionComponents?: Partial<ProjectionComponentTypes>;
 }

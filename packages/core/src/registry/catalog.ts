@@ -134,8 +134,44 @@ export class ComponentCatalog {
    * what tools are available.
    */
   toLLMCatalog(): string {
+    return this.toLLMDetailedCatalog();
+  }
+
+  /**
+   * Generate a lightweight summary catalog for progressive disclosure (Round 1).
+   * Contains only name, description, and tags — no props, examples, or capabilities.
+   * Typically ~200 tokens for 50 components vs ~2000+ for the full catalog.
+   */
+  toLLMSummary(): string {
     const payload = {
       components: Array.from(this.components.values()).map((comp) => {
+        const entry: Record<string, unknown> = {
+          name: comp.name,
+          description: comp.description,
+        };
+        if (comp.tags?.length) {
+          entry.tags = [...comp.tags];
+        }
+        return entry;
+      }),
+    };
+
+    return stringifyPromptYaml(payload);
+  }
+
+  /**
+   * Generate a detailed catalog filtered to specific components (Round 2).
+   * If no names are provided, returns the full catalog (backward-compatible).
+   */
+  toLLMDetailedCatalog(names?: string[]): string {
+    const source = names && names.length > 0
+      ? names
+          .map((n) => this.components.get(n))
+          .filter((c): c is ComponentDefinition => c !== undefined)
+      : Array.from(this.components.values());
+
+    const payload = {
+      components: source.map((comp) => {
         const entry: Record<string, unknown> = {
           name: comp.name,
           description: comp.description,
