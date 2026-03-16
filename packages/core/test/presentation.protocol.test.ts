@@ -3,7 +3,7 @@ import {
   planPresentation,
   toPresentationContext,
 } from '../src/presentation/protocol';
-import { buildUIFromData } from '../src/presentation/uiBuilder';
+import { buildProjectionFromContext } from '../src/presentation/uiBuilder';
 
 describe('presentation protocol (plain contracts)', () => {
   it('normalizes a plain request into internal context defaults', () => {
@@ -31,7 +31,7 @@ describe('presentation protocol (plain contracts)', () => {
   });
 
   it('returns patch mode for incremental context on existing rendered spec', () => {
-    const projected = buildUIFromData(
+    const projected = buildProjectionFromContext(
       [{ id: 'doc-1', kind: 'document', payload: { title: 'Doc 1', content: 'alpha' } }],
       []
     );

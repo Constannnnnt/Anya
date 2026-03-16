@@ -173,15 +173,4 @@ describe('TriggerManager', () => {
     });
   });
 
-  describe('legacy no-op APIs', () => {
-    it('checkIdle always returns no trigger', () => {
-      const trigger = new TriggerManager();
-      expect(trigger.checkIdle()).toEqual({ run: false, mode: 'async' });
-    });
-
-    it('evaluate always returns no trigger', () => {
-      const trigger = new TriggerManager();
-      expect(trigger.evaluate()).toEqual({ run: false, mode: 'async' });
-    });
-  });
 });

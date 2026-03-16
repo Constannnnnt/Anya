@@ -3,12 +3,14 @@ import { z } from 'zod';
 import { ComponentCatalog } from '../src/registry/catalog';
 import { SkillRegistry } from '../src/registry/skills';
 import { ContextMemoryManager } from '../src/memory/context';
-import { AdaptiveProfile } from '../src/memory/profile';
-import { InMemoryStorage } from '../src/storage/memory';
 import { createOrchestrator } from '../src/orchestrator';
-import type { ModelTransport } from '../src/transport';
+import { collectAgentSessionEvents } from '../src/session';
+import type {
+  AgentSessionStartInput,
+  AgentSessionTransport,
+} from '../src/session';
 
-describe('DynamicOrchestrator transport integration', () => {
+describe('DynamicOrchestrator session transport integration', () => {
   function createBaseCatalog(): ComponentCatalog {
     const catalog = new ComponentCatalog();
     catalog.register({
@@ -19,46 +21,120 @@ describe('DynamicOrchestrator transport integration', () => {
     return catalog;
   }
 
-  it('uses configured transport to generate and decode a UI spec', async () => {
-    const complete = vi.fn().mockResolvedValue({
-      content: [
-        'spec_version: 1',
-        'layout: stack',
-        'skill: profile_edit',
-        'components:',
-        '  - id: h1',
-        '    type: Heading',
-        '    props:',
-        '      text: "Profile"',
-      ].join('\n'),
+  function createSurfaceSessionTransport(
+    onStart?: (input: AgentSessionStartInput) => void,
+  ): AgentSessionTransport {
+    return {
+      async startSession(input) {
+        onStart?.(input);
+        const sessionId = input.sessionId ?? 'session-test';
+
+        return {
+          sessionId,
+          controller: { cancel() {} },
+          events: (async function* () {
+            yield {
+              type: 'session.started' as const,
+              sessionId,
+              timestamp: 1,
+            };
+            yield {
+              type: 'session.status' as const,
+              sessionId,
+              timestamp: 2,
+              status: 'running' as const,
+            };
+            yield {
+              type: 'artifact.upserted' as const,
+              sessionId,
+              timestamp: 3,
+              artifact: {
+                id: 'artifact-surface',
+                sessionId,
+                kind: 'surface' as const,
+                version: 1,
+                createdAt: 3,
+                audience: 'user' as const,
+                region: 'main' as const,
+                payload: {
+                  surface: {
+                    surfaceKind: 'ui_spec' as const,
+                    surfaceId: 'surface-main',
+                    schema: {
+                      type: 'anya.ui_spec' as const,
+                      spec: {
+                        spec_version: 1,
+                        layout: 'stack' as const,
+                        skill: 'profile_edit',
+                        components: [
+                          {
+                            id: 'h1',
+                            type: 'Heading',
+                            props: { text: 'Profile' },
+                          },
+                        ],
+                      },
+                    },
+                  },
+                },
+              },
+            };
+            yield {
+              type: 'session.completed' as const,
+              sessionId,
+              timestamp: 4,
+            };
+          })(),
+        };
+      },
+    };
+  }
+
+  it('uses configured session transport to start an artifact session', async () => {
+    let capturedInput: AgentSessionStartInput | undefined;
+    const sessionTransport = createSurfaceSessionTransport((input) => {
+      capturedInput = input;
     });
-    const transport: ModelTransport = { complete };
+
     const memory = new ContextMemoryManager();
     const orchestrator = createOrchestrator({
       catalog: createBaseCatalog(),
       skills: new SkillRegistry(),
       memory,
-      transport,
+      sessionTransport,
     });
 
-    const spec = await orchestrator.generateSpecWithTransport({
+    const run = await orchestrator.startAgentSession({
       userIntent: 'Build a profile editor',
-      messages: [],
+      messages: [
+        {
+          id: 'agent-1',
+          role: 'agent',
+          content: 'Previous response',
+          timestamp: 123,
+        },
+      ],
     });
+    const events = await collectAgentSessionEvents(run);
 
-    expect(spec.spec_version).toBe(1);
-    expect(spec.components).toHaveLength(1);
-    expect(spec.components[0].type).toBe('Heading');
-    expect(memory.getContext().userIntent).toBe('Build a profile editor');
-    expect(memory.getContext().workflowContext).toBe('profile_edit');
-
-    expect(complete).toHaveBeenCalledTimes(1);
-    const request = complete.mock.calls[0][0];
-    expect(request.newUserMessage).toBe('Build a profile editor');
-    expect(request.systemPrompt).toContain('# Your Tools');
+    expect(capturedInput?.userIntent).toBe('Build a profile editor');
+    expect(capturedInput?.systemPrompt).toContain('# Your Tools');
+    expect(capturedInput?.messages).toEqual([
+      {
+        id: 'agent-1',
+        role: 'assistant',
+        content: 'Previous response',
+        timestamp: 123,
+      },
+    ]);
+    expect(events[0]?.type).toBe('session.started');
+    expect(
+      events.some((event) => event.type === 'artifact.upserted' && event.artifact.kind === 'surface'),
+    ).toBe(true);
+    expect(events.at(-1)?.type).toBe('session.completed');
   });
 
-  it('throws when transport is missing', async () => {
+  it('throws when session transport is missing', async () => {
     const orchestrator = createOrchestrator({
       catalog: createBaseCatalog(),
       skills: new SkillRegistry(),
@@ -66,30 +142,11 @@ describe('DynamicOrchestrator transport integration', () => {
     });
 
     await expect(
-      orchestrator.generateSpecWithTransport({
+      orchestrator.startAgentSession({
         userIntent: 'No transport path',
         messages: [],
-      })
-    ).rejects.toThrow(/No model transport configured/);
-  });
-
-  it('throws when transport returns empty content', async () => {
-    const transport: ModelTransport = {
-      complete: vi.fn().mockResolvedValue({ content: '   ' }),
-    };
-    const orchestrator = createOrchestrator({
-      catalog: createBaseCatalog(),
-      skills: new SkillRegistry(),
-      memory: new ContextMemoryManager(),
-      transport,
-    });
-
-    await expect(
-      orchestrator.generateSpecWithTransport({
-        userIntent: 'Empty response',
-        messages: [],
-      })
-    ).rejects.toThrow(/Transport returned empty content/);
+      }),
+    ).rejects.toThrow(/No session transport configured/);
   });
 
   it('returns response format prompt parts for the requested format', () => {
@@ -107,39 +164,36 @@ describe('DynamicOrchestrator transport integration', () => {
     expect(yamlParts.responseFormatBlock).toContain('Respond with YAML in this format:');
   });
 
-  it('keeps profile observations in decoded spec output for runtime memory pipeline', async () => {
-    const complete = vi.fn().mockResolvedValue({
-      content: [
-        'spec_version: 1',
-        'layout: stack',
-        'profile_observation: "User prefers compact card layouts."',
-        'components:',
-        '  - id: h1',
-        '    type: Heading',
-        '    props:',
-        '      text: "Profile"',
-      ].join('\n'),
-    });
-
-    const transport: ModelTransport = { complete };
-    const storage = new InMemoryStorage();
-    const profile = new AdaptiveProfile(storage);
-    await profile.load();
-
+  it('allows call-level session transport overrides', async () => {
+    const configuredStart = vi.fn();
+    const overrideStart = vi.fn();
     const orchestrator = createOrchestrator({
       catalog: createBaseCatalog(),
       skills: new SkillRegistry(),
       memory: new ContextMemoryManager(),
-      profile,
-      transport,
+      sessionTransport: createSurfaceSessionTransport(configuredStart),
     });
 
-    const spec = await orchestrator.generateSpecWithTransport({
-      userIntent: 'Show profile',
+    await orchestrator.startAgentSession({
+      userIntent: 'Use the override',
       messages: [],
+      transport: createSurfaceSessionTransport(overrideStart),
     });
 
-    expect(spec.profile_observation).toBe('User prefers compact card layouts.');
-    expect(profile.getContent()).not.toContain('User prefers compact card layouts.');
+    expect(configuredStart).not.toHaveBeenCalled();
+    expect(overrideStart).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports whether a session transport is configured', () => {
+    const orchestrator = createOrchestrator({
+      catalog: createBaseCatalog(),
+      skills: new SkillRegistry(),
+      memory: new ContextMemoryManager(),
+    });
+
+    expect(orchestrator.hasSessionTransport()).toBe(false);
+
+    orchestrator.setSessionTransport(createSurfaceSessionTransport());
+    expect(orchestrator.hasSessionTransport()).toBe(true);
   });
 });

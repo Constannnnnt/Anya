@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { planUIUpdate } from '../src/presentation/updatePlanner';
-import { buildUIFromData } from '../src/presentation/uiBuilder';
+import { buildProjectionFromContext } from '../src/presentation/uiBuilder';
 import type { PresentationContext } from '../src/presentation/types';
 
 describe('presentation planner (v0)', () => {
   it('prefers patch mode for incremental new context updates', () => {
-    const baseProjection = buildUIFromData(
+    const baseProjection = buildProjectionFromContext(
       [
         { id: 'doc-1', kind: 'document', payload: { title: 'Doc 1', content: 'Alpha' } },
       ],
@@ -30,7 +30,7 @@ describe('presentation planner (v0)', () => {
     expect(plan.operations?.some((operation) => operation.type === 'upsert_component')).toBe(true);
   });
 
-  it('falls back to rebuild mode when there is no current spec', () => {
+  it('uses rebuild mode when there is no current spec', () => {
     const context: PresentationContext = {
       context_version: 0,
       dataNodes: [
@@ -48,7 +48,7 @@ describe('presentation planner (v0)', () => {
   });
 
   it('removes stale non-projected bindings during patch planning', () => {
-    const baseProjection = buildUIFromData(
+    const baseProjection = buildProjectionFromContext(
       [{ id: 'doc-1', kind: 'document', payload: { title: 'Doc 1', content: 'Alpha' } }],
       []
     );
@@ -105,7 +105,7 @@ describe('presentation planner (v0)', () => {
   });
 
   it('rebuilds when workflow context shifts from previously rendered skill', () => {
-    const baseProjection = buildUIFromData(
+    const baseProjection = buildProjectionFromContext(
       [{ id: 'doc-1', kind: 'document', payload: { title: 'Doc 1', content: 'Alpha' } }],
       [],
       {
@@ -166,7 +166,7 @@ describe('presentation planner (v0)', () => {
   });
 
   it('honors explicit rebuild mode request without keyword parsing', () => {
-    const baseProjection = buildUIFromData(
+    const baseProjection = buildProjectionFromContext(
       [{ id: 'doc-1', kind: 'document', payload: { title: 'Doc 1', content: 'Alpha' } }],
       []
     );
@@ -202,7 +202,7 @@ describe('presentation planner (v0)', () => {
   });
 
   it('uses workflowContext with deterministic policy overrides', () => {
-    const baseProjection = buildUIFromData(
+    const baseProjection = buildProjectionFromContext(
       [{ id: 'doc-1', kind: 'document', payload: { title: 'Doc 1', content: 'Alpha' } }],
       []
     );

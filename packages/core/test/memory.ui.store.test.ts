@@ -143,6 +143,16 @@ describe('UI Memory Schemas', () => {
     expect(MemoryCursorSchema.parse(cursor)).toEqual(cursor);
   });
 
+  it('validates a behavior-pipeline MemoryCursor namespace', () => {
+    const cursor: MemoryCursor = {
+      namespace: 'ui_behavior',
+      lastProcessedEventId: 'evt-1',
+      lastProcessedTs: Date.now(),
+      updatedTs: Date.now(),
+    };
+    expect(MemoryCursorSchema.parse(cursor)).toEqual(cursor);
+  });
+
   it('rejects MemoryCursor with wrong namespace', () => {
     expect(() =>
       MemoryCursorSchema.parse({ namespace: 'other', lastProcessedEventId: 'x', lastProcessedTs: 0, updatedTs: 0 }),

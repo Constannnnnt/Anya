@@ -84,7 +84,7 @@ describe('presentation patch performance behavior', () => {
     expect(result.updatedSpec.components[0].children?.[0].props.content).toBe('new');
   });
 
-  it('falls back to rebuild when patch operation budget is exceeded', () => {
+  it('escalates to rebuild when patch operation budget is exceeded', () => {
     const spec: UIRenderSpec = {
       layout: 'stack',
       components: [
@@ -122,7 +122,7 @@ describe('presentation patch performance behavior', () => {
     });
 
     expect(applied.modeApplied).toBe('rebuild');
-    expect(applied.fallbackToRebuild).toBe(true);
+    expect(applied.rebuildEscalated).toBe(true);
     expect(applied.appliedOperations).toBe(0);
   });
 });
