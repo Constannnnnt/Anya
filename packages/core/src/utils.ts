@@ -158,7 +158,7 @@ export function applyOptimisticUpdate(
 
     const appended = findAndAppend(newSpec.components, targetId, node);
     if (!appended) {
-      // Fallback: keep the element visible instead of dropping data on append failure.
+      // Preserve the element instead of silently dropping it when append fails.
       newSpec.components.push(node);
     }
 

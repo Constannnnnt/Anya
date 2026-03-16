@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 import { SQLiteMemoryStore } from '../src/memory/ui/sqliteAdapter';
-import { createMemoryStoreByPolicy } from '../src/memory/ui/storeFactory';
+import { createMemoryStoreByPolicySync } from '../src/memory/ui/storeFactory';
 
 describe('SQLiteMemoryStore', () => {
   it('persists and reloads snapshot data across instances', async () => {
@@ -58,9 +58,9 @@ describe('SQLiteMemoryStore', () => {
   });
 });
 
-describe('createMemoryStoreByPolicy', () => {
+describe('createMemoryStoreByPolicySync', () => {
   it('returns in-memory adapter for memory policy', async () => {
-    const store = await createMemoryStoreByPolicy({
+    const store = createMemoryStoreByPolicySync({
       policy: 'memory',
     });
     await store.appendEvents([
@@ -78,11 +78,18 @@ describe('createMemoryStoreByPolicy', () => {
     expect(latest).toBe('evt-2');
   });
 
-  it('falls back to in-memory when selected adapter is unavailable and fallback is enabled', async () => {
-    const store = await createMemoryStoreByPolicy({
+  it('throws by default when the requested adapter is unavailable', () => {
+    expect(() => createMemoryStoreByPolicySync({
       policy: 'indexeddb',
       runtime: 'node',
-      fallbackToMemory: true,
+    })).toThrow("[MemoryStoreFactory] Failed to initialize 'indexeddb' adapter.");
+  });
+
+  it('downgrades to in-memory when selected adapter is unavailable and downgrade is enabled', async () => {
+    const store = createMemoryStoreByPolicySync({
+      policy: 'indexeddb',
+      runtime: 'node',
+      allowMemoryDowngrade: true,
     });
     await store.appendEvents([
       {
@@ -98,4 +105,3 @@ describe('createMemoryStoreByPolicy', () => {
     expect(await store.getLatestEventId()).toBe('evt-3');
   });
 });
-

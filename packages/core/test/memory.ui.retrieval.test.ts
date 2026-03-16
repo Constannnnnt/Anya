@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { RetrievalComposer } from '../src/memory/ui/retrieval';
 import { InMemoryMemoryStore } from '../src/memory/ui/inMemoryAdapter';
+import { InMemoryBehaviorStore, type BehaviorFinding } from '../src/memory/ui/behavior';
+import { DEFAULT_FINDING_INTERPRETER_POLICY } from '../src/memory/ui/behavior/policy';
 import type { PreferenceMemory, InteractionPattern, Reflection } from '../src/memory/ui/schemas';
 
 function makePref(overrides: Partial<PreferenceMemory> = {}): PreferenceMemory {
@@ -49,6 +51,28 @@ function makeReflection(overrides: Partial<Reflection> = {}): Reflection {
   };
 }
 
+function makeBehaviorFinding(overrides: Partial<BehaviorFinding> = {}): BehaviorFinding {
+  return {
+    id: `bf-${Math.random().toString(36).slice(2, 8)}`,
+    actorId: 'actor-1',
+    analyzerId: 'rework_friction',
+    kind: 'reflection_candidate',
+    conceptKey: 'rework-friction:edit_compose',
+    scopeKey: 'context:edit_compose',
+    confidence: 0.91,
+    support: 4,
+    severity: 'high',
+    evidenceRefs: ['sig-1', 'sig-2'],
+    payload: {
+      contextArchetype: 'edit_compose',
+      avgRetryRate: 0.28,
+      avgFailureRate: 0.14,
+    },
+    createdTs: 1000,
+    ...overrides,
+  };
+}
+
 describe('RetrievalComposer', () => {
   describe('retrievePlanningContext', () => {
     it('retrieves preferences, patterns, and reflections', async () => {
@@ -63,6 +87,7 @@ describe('RetrievalComposer', () => {
       expect(ctx.preferences).toHaveLength(1);
       expect(ctx.patterns).toHaveLength(1);
       expect(ctx.reflections).toHaveLength(1);
+      expect(ctx.behaviorAdaptations).toHaveLength(0);
     });
 
     it('returns empty context when no data exists', async () => {
@@ -73,6 +98,7 @@ describe('RetrievalComposer', () => {
       expect(ctx.preferences).toHaveLength(0);
       expect(ctx.patterns).toHaveLength(0);
       expect(ctx.reflections).toHaveLength(0);
+      expect(ctx.behaviorAdaptations).toHaveLength(0);
     });
 
     it('respects maxPreferences limit', async () => {
@@ -128,6 +154,48 @@ describe('RetrievalComposer', () => {
       expect(ctx.patterns).toHaveLength(1);
       expect(ctx.patterns[0].outcome).toBe('success');
     });
+
+    it('retrieves local adaptations from retained measured interaction findings', async () => {
+      const store = new InMemoryMemoryStore();
+      const behaviorStore = new InMemoryBehaviorStore();
+      await behaviorStore.upsertFindings([
+        makeBehaviorFinding(),
+        makeBehaviorFinding({
+          id: 'bf-other',
+          conceptKey: 'choice-overload:search_filter',
+          scopeKey: 'context:search_filter',
+          analyzerId: 'hick_hyman',
+          payload: {
+            contextArchetype: 'search_filter',
+            avgChoiceSetSize: 8,
+            avgChoiceBits: 3.17,
+          },
+        }),
+      ]);
+
+      const composer = new RetrievalComposer();
+      const ctx = await composer.retrievePlanningContext(
+        store,
+        'actor-1',
+        { taskClass: 'edit_compose' },
+        {
+          store: behaviorStore,
+          policy: {
+            ...DEFAULT_FINDING_INTERPRETER_POLICY,
+            localAdaptationConfidenceMin: 0.8,
+            localAdaptationSeverityMin: 'high',
+            allowedKindsByAnalyzer: {
+              ...DEFAULT_FINDING_INTERPRETER_POLICY.allowedKindsByAnalyzer,
+            },
+          },
+        },
+      );
+
+      expect(ctx.behaviorAdaptations).toHaveLength(2);
+      expect(ctx.behaviorAdaptations[0]).toEqual(expect.objectContaining({
+        analyzerId: 'rework_friction',
+      }));
+    });
   });
 
   describe('ranking', () => {
@@ -176,6 +244,7 @@ describe('RetrievalComposer', () => {
           { ...makePattern(), rank: 0.85 },
         ],
         reflections: [makeReflection()],
+        behaviorAdaptations: [],
       });
 
       expect(formatted).toContain('## UI Memory Priors');
@@ -191,9 +260,82 @@ describe('RetrievalComposer', () => {
         preferences: [],
         patterns: [],
         reflections: [],
+        behaviorAdaptations: [],
       });
 
       expect(formatted).toBe('');
+    });
+
+    it('formats measured interaction signals and behavior-derived memory distinctly', () => {
+      const composer = new RetrievalComposer();
+      const formatted = composer.formatForPrompt({
+        preferences: [
+          {
+            ...makePref({
+              signalType: 'implicit',
+              derivation: {
+                source: 'behavior_analysis',
+                analyzerId: 'practice_curve',
+                support: 3,
+              },
+            }),
+            rank: 0.82,
+          },
+        ],
+        patterns: [],
+        reflections: [],
+        behaviorAdaptations: [
+          {
+            findingId: 'bf-1',
+            analyzerId: 'rework_friction',
+            confidence: 0.91,
+            support: 4,
+            severity: 'high',
+            scopeKey: 'context:edit_compose',
+            summary: 'Repeated correction loops are showing up in Edit Compose.',
+            recommendation: 'Simplify the flow and strengthen defaults.',
+            metrics: [
+              { label: 'avgRetryRate', value: '28%' },
+            ],
+            rank: 1.2,
+          },
+        ],
+      });
+
+      expect(formatted).toContain('behavior-derived');
+      expect(formatted).toContain('### Measured Interaction Signals');
+      expect(formatted).toContain('Repeated correction loops are showing up in Edit Compose.');
+      expect(formatted).toContain('avgRetryRate=28%');
+    });
+
+    it('preserves practice-curve guidance as adaptation rather than generic preference text', () => {
+      const composer = new RetrievalComposer();
+      const formatted = composer.formatForPrompt({
+        preferences: [],
+        patterns: [],
+        reflections: [],
+        behaviorAdaptations: [
+          {
+            findingId: 'bf-practice',
+            analyzerId: 'practice_curve',
+            confidence: 0.88,
+            support: 3,
+            severity: 'medium',
+            scopeKey: 'context:edit_compose',
+            summary: 'A repeated successful sequence is emerging in Edit Compose: input -> activate -> tool.',
+            recommendation: 'Preserve the successful sequence and avoid redesigns that break the learned path.',
+            metrics: [
+              { label: 'burdenImprovement', value: '2.4' },
+            ],
+            rank: 1.05,
+          },
+        ],
+      });
+
+      expect(formatted).toContain('### Measured Interaction Signals');
+      expect(formatted).toContain('A repeated successful sequence is emerging in Edit Compose');
+      expect(formatted).toContain('Preserve the successful sequence and avoid redesigns that break the learned path.');
+      expect(formatted).not.toContain('preference');
     });
   });
 });

@@ -148,6 +148,34 @@ describe('buildExtractionContext', () => {
     expect(ctx.toolManifest).toEqual(['tool_a', 'tool_b']);
   });
 
+  it('excludes behavior telemetry events from semantic extraction context by default', () => {
+    const events: UiMemoryEvent[] = [
+      makeEvent({
+        type: 'ui.presented',
+        payloadJson: JSON.stringify({
+          surface: {
+            uiId: 'ui-1',
+            layout: 'stack',
+          },
+        }),
+      }),
+      makeEvent({
+        type: 'interaction.measured',
+        payloadJson: JSON.stringify({
+          interactionEventId: 'evt-1',
+          measurement: {
+            modality: 'pointer',
+            targetWidthPx: 120,
+          },
+        }),
+      }),
+    ];
+
+    const ctx = buildExtractionContext(events);
+    expect(ctx.uiEvents).toEqual([]);
+    expect(ctx.conversations).toEqual([]);
+  });
+
   it('formats binding and tool lifecycle events into uiEvents', () => {
     const events: UiMemoryEvent[] = [
       makeEvent({

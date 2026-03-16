@@ -33,6 +33,12 @@ export type InteractionTrigger =
   | 'onMouseEnter' 
   | 'onMouseLeave';
 
+export type InteractionModality =
+  | 'pointer'
+  | 'keyboard'
+  | 'touch'
+  | 'unknown';
+
 export interface UIInteractionDefinition {
   trigger: InteractionTrigger;
   action: InteractionAction;
@@ -68,6 +74,52 @@ export interface UIInteractionRecord {
   targetIds?: string[];
   /** The action to perform on the targets, if any */
   targetAction?: string;
+}
+
+export interface UIInteractionMeasurementHint {
+  modality?: InteractionModality;
+  targetWidthPx?: number;
+  targetHeightPx?: number;
+  pointerX?: number;
+  pointerY?: number;
+  travelPx?: number;
+  pathLengthPx?: number;
+  pathWidthPx?: number;
+  dragDistancePx?: number;
+  choiceSetSize?: number;
+  focusMovesSinceLast?: number;
+  homingTransitionsSinceLast?: number;
+}
+
+export interface UIInteractionMeasurement {
+  modality: InteractionModality;
+  componentRole?: string;
+  componentFamily?: string;
+  actionFamily?: string;
+  travelPx?: number;
+  pathLengthPx?: number;
+  pathWidthPx?: number;
+  dragDistancePx?: number;
+  targetWidthPx?: number;
+  targetHeightPx?: number;
+  choiceSetSize?: number;
+  isPrimaryAction?: boolean;
+  focusMovesSinceLast?: number;
+  homingTransitionsSinceLast?: number;
+  valueLength?: number;
+  deltaLength?: number;
+}
+
+export interface UIPresentedSurface {
+  uiId: string;
+  layout: UIRenderSpec['layout'];
+  workflowContext?: string;
+  componentCount: number;
+  interactiveCount: number;
+  actionableCount: number;
+  componentFamilies: string[];
+  actionFamilies: string[];
+  surfaceHash: string;
 }
 
 // ─── Memory Types ────────────────────────────────────────────────────────
@@ -188,6 +240,7 @@ export interface UIComponentSpec {
   children?: UIComponentSpec[];
 }
 
+
 // ─── Agent Types ─────────────────────────────────────────────────────────
 
 export type AgentState = 'idle' | 'thinking' | 'rendering' | 'waiting' | 'error';
@@ -215,6 +268,10 @@ export interface PromptOptions {
   includeMemory?: boolean;
   /** Response format */
   responseFormat?: 'yaml' | 'json';
+  /** If set, only include these components in the catalog (progressive disclosure Round 2) */
+  selectedComponents?: string[];
+  /** If true, always include the full catalog (skip progressive disclosure) */
+  fullCatalog?: boolean;
 }
 
 /** Level 3: Raw prompt parts for full-control builders */
@@ -223,4 +280,6 @@ export interface PromptParts {
   skillsYaml: string;
   memoryContext: string;
   responseFormatBlock: string;
+  /** Lightweight summary catalog for progressive disclosure Round 1 */
+  summaryCatalogYaml: string;
 }

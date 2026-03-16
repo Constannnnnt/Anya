@@ -1,10 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import {
+  createBehaviorFinding,
   createAnyaKernel,
   createDefaultRuntimeEffects,
   createRuntimeEvent,
+  InMemoryBehaviorStore,
   InMemoryStorage,
+  type BehaviorAnalysisRunCapture,
+  type BehaviorAnalyzer,
   type RuntimeEffect,
   type UIRenderSpec,
 } from '../src/index';
@@ -431,5 +435,314 @@ describe('createAnyaKernel', () => {
     ]);
 
     expect(await kernel.uiMemoryStore!.getLatestEventId()).toBe('evt-policy-1');
+  });
+
+  it('runs automatic behavior analysis and capture through the kernel behavior pipeline', async () => {
+    const captures: BehaviorAnalysisRunCapture[] = [];
+    const behaviorAnalyzer: BehaviorAnalyzer = {
+      id: 'test_behavior_reflection',
+      dependencies: ['aggregates'],
+      cadence: 'rollup',
+      minInteractions: 1,
+      run: async ({ actorId, aggregates, now }) => ({
+        findings: [
+          createBehaviorFinding({
+            actorId,
+            analyzerId: 'test_behavior_reflection',
+            kind: 'reflection_candidate',
+            conceptKey: 'test-reflection:compare',
+            scopeKey: 'context:compare',
+            confidence: 0.95,
+            support: Math.max(1, aggregates[0]?.sessionCount ?? 1),
+            evidenceRefs: ['agg-1'],
+            payload: {
+              title: 'Behavior Reflection',
+              hints: 'Behavior analysis detected a repeated compare pattern.',
+              useCases: 'Compare contexts.',
+            },
+            createdTs: now,
+          }),
+        ],
+      }),
+    };
+
+    const kernel = createAnyaKernel({
+      storage: new InMemoryStorage(),
+      uiMemory: {
+        enabled: true,
+        actorId: 'actor-behavior',
+        triggerConfig: { debounceMs: 0 },
+        behavior: {
+          enabled: true,
+          store: new InMemoryBehaviorStore(),
+          analyzers: [behaviorAnalyzer],
+          interpreterPolicy: {
+            mode: 'calibration_required',
+            allowResolvedMemoryPromotion: true,
+            diagnosticConfidenceMin: 0.5,
+            localAdaptationConfidenceMin: 0.75,
+            localAdaptationSeverityMin: 'high',
+            allowedKindsByAnalyzer: {
+              test_behavior_reflection: ['reflection_candidate'],
+            },
+            promotionRules: {
+              reflection_candidate: { confidenceMin: 0.7, supportMin: 1 },
+            },
+          },
+          captureSnapshots: true,
+          onCapture: (capture) => captures.push(capture),
+        },
+      },
+    });
+
+    kernel.runtime.dispatch(createRuntimeEvent('ui.presented', {
+      surface: {
+        uiId: 'ui-kernel',
+        surfaceHash: 'ui-kernel',
+        layout: 'split',
+        workflowContext: 'analysis',
+        componentCount: 2,
+        interactiveCount: 1,
+        actionableCount: 1,
+        componentFamilies: ['input', 'layout'],
+        actionFamilies: ['activate'],
+      },
+    }, { source: 'system' }));
+    kernel.runtime.dispatch(createRuntimeEvent('interaction.measured', {
+      interactionEventId: 'evt-measured-1',
+      elementId: 'btn-1',
+      componentName: 'Button',
+      action: 'submit',
+      measurement: {
+        modality: 'pointer',
+        componentFamily: 'action',
+        actionFamily: 'activate',
+        choiceSetSize: 6,
+      },
+    }, { source: 'user' }));
+
+    kernel.runtime.dispatch(createRuntimeEvent('session.status_set', { status: 'thinking' }, { source: 'system' }));
+    kernel.runtime.dispatch(createRuntimeEvent('session.status_set', { status: 'idle' }, { source: 'system' }));
+
+    await waitForCondition(async () => {
+      const reflections = await kernel.uiMemoryStore?.findReflections('actor-behavior');
+      return Boolean(reflections && reflections.length > 0);
+    });
+
+    const reflections = await kernel.uiMemoryStore!.findReflections('actor-behavior');
+    expect(reflections).toEqual([
+      expect.objectContaining({ title: 'Behavior Reflection' }),
+    ]);
+    expect(kernel.uiBehaviorStore).toBeDefined();
+    expect(await kernel.uiBehaviorStore!.findSignals('actor-behavior')).toHaveLength(1);
+    expect(captures).toHaveLength(1);
+    expect(captures[0].behaviorSnapshot?.signals).toHaveLength(1);
+    expect(captures[0].integration.promotedReflections).toBe(1);
+    const behaviorCursor = await kernel.uiMemoryStore!.getCursor('ui_behavior');
+    expect(behaviorCursor?.lastProcessedEventId).toBeDefined();
+  });
+
+  it('surfaces retained measured interaction findings as planner priors without promoting them into generic memory', async () => {
+    const behaviorAnalyzer: BehaviorAnalyzer = {
+      id: 'test_local_adaptation',
+      dependencies: ['aggregates'],
+      cadence: 'rollup',
+      minInteractions: 1,
+      run: async ({ actorId, now }) => ({
+        findings: [
+          createBehaviorFinding({
+            actorId,
+            analyzerId: 'test_local_adaptation',
+            kind: 'reflection_candidate',
+            conceptKey: 'local-adaptation:compare',
+            scopeKey: 'context:compare',
+            confidence: 0.92,
+            support: 3,
+            severity: 'high',
+            evidenceRefs: ['agg-1'],
+            payload: {
+              title: 'Repeated comparison friction',
+              hints: 'Keep primary comparison actions closer together and reduce pane switching.',
+              contextArchetype: 'compare',
+            },
+            createdTs: now,
+          }),
+        ],
+      }),
+    };
+
+    const kernel = createAnyaKernel({
+      storage: new InMemoryStorage(),
+      uiMemory: {
+        enabled: true,
+        actorId: 'actor-local-adaptation',
+        triggerConfig: { debounceMs: 0 },
+        behavior: {
+          enabled: true,
+          store: new InMemoryBehaviorStore(),
+          analyzers: [behaviorAnalyzer],
+          interpreterPolicy: {
+            mode: 'calibration_required',
+            allowResolvedMemoryPromotion: false,
+            diagnosticConfidenceMin: 0.5,
+            localAdaptationConfidenceMin: 0.8,
+            localAdaptationSeverityMin: 'high',
+            allowedKindsByAnalyzer: {
+              test_local_adaptation: ['reflection_candidate'],
+            },
+            promotionRules: {},
+          },
+        },
+      },
+    });
+
+    kernel.memory.setContext({ workflowContext: 'compare' });
+
+    kernel.runtime.dispatch(createRuntimeEvent('ui.presented', {
+      surface: {
+        uiId: 'ui-local-adaptation',
+        surfaceHash: 'ui-local-adaptation',
+        layout: 'split',
+        workflowContext: 'compare',
+        componentCount: 2,
+        interactiveCount: 1,
+        actionableCount: 1,
+        componentFamilies: ['action', 'layout'],
+        actionFamilies: ['activate'],
+      },
+    }, { source: 'system' }));
+    kernel.runtime.dispatch(createRuntimeEvent('interaction.measured', {
+      interactionEventId: 'evt-local-adaptation',
+      elementId: 'btn-compare',
+      componentName: 'Button',
+      action: 'submit',
+      measurement: {
+        modality: 'pointer',
+        componentFamily: 'action',
+        actionFamily: 'activate',
+        choiceSetSize: 4,
+      },
+    }, { source: 'user' }));
+    kernel.runtime.dispatch(createRuntimeEvent('session.status_set', { status: 'thinking' }, { source: 'system' }));
+    kernel.runtime.dispatch(createRuntimeEvent('session.status_set', { status: 'idle' }, { source: 'system' }));
+
+    await waitForCondition(async () => {
+      const findings = await kernel.uiBehaviorStore?.findFindings('actor-local-adaptation');
+      return Boolean(findings && findings.length > 0);
+    });
+
+    expect(await kernel.uiMemoryStore!.findReflections('actor-local-adaptation')).toHaveLength(0);
+
+    const priors = await kernel.orchestrator.getUiMemoryPriors();
+    expect(priors).toContain('### Measured Interaction Signals');
+    expect(priors).toContain('Repeated comparison friction.');
+    expect(priors).toContain('Keep primary comparison actions closer together and reduce pane switching.');
+  });
+
+  it('advances the behavior cursor for behavior-trigger windows that contain no projectable signals or surface context', async () => {
+    const captures: BehaviorAnalysisRunCapture[] = [];
+    const kernel = createAnyaKernel({
+      storage: new InMemoryStorage(),
+      uiMemory: {
+        enabled: true,
+        actorId: 'actor-behavior-skip',
+        triggerConfig: { debounceMs: 0 },
+        behavior: {
+          enabled: true,
+          store: new InMemoryBehaviorStore(),
+          captureSnapshots: true,
+          onCapture: (capture) => captures.push(capture),
+        },
+      },
+    });
+
+    const thinkingEventId = 'evt-thinking-only';
+    const idleEventId = 'evt-idle-only';
+
+    kernel.runtime.dispatch(createRuntimeEvent('session.status_set', { status: 'thinking' }, { id: thinkingEventId, source: 'system' }));
+    kernel.runtime.dispatch(createRuntimeEvent('session.status_set', { status: 'idle' }, { id: idleEventId, source: 'system' }));
+
+    await waitForCondition(async () => {
+      const cursor = await kernel.uiMemoryStore?.getCursor('ui_behavior');
+      return cursor?.lastProcessedEventId === idleEventId;
+    });
+
+    expect(await kernel.uiBehaviorStore!.findSignals('actor-behavior-skip')).toHaveLength(0);
+    expect(await kernel.uiMemoryStore!.findReflections('actor-behavior-skip')).toHaveLength(0);
+    expect(captures).toHaveLength(0);
+
+    const behaviorCursor = await kernel.uiMemoryStore!.getCursor('ui_behavior');
+    expect(behaviorCursor).toEqual(expect.objectContaining({
+      namespace: 'ui_behavior',
+      lastProcessedEventId: idleEventId,
+    }));
+  });
+
+  it('retains ui.presented context until a later projectable behavior event arrives', async () => {
+    const kernel = createAnyaKernel({
+      storage: new InMemoryStorage(),
+      uiMemory: {
+        enabled: true,
+        actorId: 'actor-behavior-context',
+        triggerConfig: { debounceMs: 0 },
+        behavior: {
+          enabled: true,
+          store: new InMemoryBehaviorStore(),
+        },
+      },
+    });
+
+    const presentedEventId = 'evt-presented-context';
+    kernel.runtime.dispatch(createRuntimeEvent('ui.presented', {
+      surface: {
+        uiId: 'ui-context',
+        surfaceHash: 'ui-context',
+        layout: 'split',
+        workflowContext: 'analysis',
+        componentCount: 2,
+        interactiveCount: 1,
+        actionableCount: 1,
+        componentFamilies: ['input', 'layout'],
+        actionFamilies: ['activate'],
+      },
+    }, { id: presentedEventId, source: 'system' }));
+    kernel.runtime.dispatch(createRuntimeEvent('session.status_set', { status: 'thinking' }, { source: 'system' }));
+    kernel.runtime.dispatch(createRuntimeEvent('session.status_set', { status: 'idle' }, { source: 'system' }));
+
+    await waitForCondition(async () => {
+      const cursor = await kernel.uiMemoryStore?.getCursor('ui_behavior');
+      return cursor === null;
+    });
+
+    kernel.runtime.dispatch(createRuntimeEvent('interaction.measured', {
+      interactionEventId: 'evt-measured-context',
+      elementId: 'btn-1',
+      componentName: 'Button',
+      action: 'submit',
+      measurement: {
+        modality: 'pointer',
+        componentFamily: 'action',
+        actionFamily: 'activate',
+        choiceSetSize: 4,
+      },
+    }, { source: 'user' }));
+    kernel.runtime.dispatch(createRuntimeEvent('session.status_set', { status: 'thinking' }, { source: 'system' }));
+    kernel.runtime.dispatch(createRuntimeEvent('session.status_set', { status: 'idle' }, { source: 'system' }));
+
+    await waitForCondition(async () => {
+      const signals = await kernel.uiBehaviorStore?.findSignals('actor-behavior-context');
+      return Boolean(signals && signals.length > 0);
+    });
+
+    const [signal] = await kernel.uiBehaviorStore!.findSignals('actor-behavior-context');
+    expect(signal).toEqual(expect.objectContaining({
+      uiId: 'ui-context',
+      workflowContext: 'analysis',
+      contextArchetype: 'compare',
+    }));
+
+    const behaviorCursor = await kernel.uiMemoryStore!.getCursor('ui_behavior');
+    expect(behaviorCursor?.lastProcessedEventId).toBeDefined();
+    expect(behaviorCursor?.lastProcessedEventId).not.toBe(presentedEventId);
   });
 });
