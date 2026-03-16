@@ -45,17 +45,9 @@ describe('validateSpecForPublish', () => {
     expect(validateSpecForPublish(splitSpec).valid).toBe(true);
   });
 
-  it('allows unknown tools when explicit URL fallback is present and option is enabled', () => {
+  it('fails unknown tools even when explicit URL fields are present', () => {
     const spec = makeBaseSpec();
-    const result = validateSpecForPublish(spec, {
-      knownTools: new Set(['rotateImage']),
-      allowUnknownToolWithNavigationFallback: true,
-    });
-    expect(result.valid).toBe(true);
-  });
-
-  it('fails unknown tools when fallback option is disabled', () => {
-    const spec = makeBaseSpec();
+    spec.components[0].interactions![0].url = 'https://example.com';
     const result = validateSpecForPublish(spec, {
       knownTools: new Set(['rotateImage']),
     });
@@ -77,7 +69,7 @@ describe('validateSpecForPublish', () => {
 });
 
 describe('enforceButtonOnClickContract', () => {
-  it('adds fallback onClick interaction to button missing click action', () => {
+  it('adds a required onClick interaction to button missing click action', () => {
     const spec: UIRenderSpec = {
       layout: 'stack',
       components: [

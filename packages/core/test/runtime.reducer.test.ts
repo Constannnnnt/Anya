@@ -61,6 +61,42 @@ describe('runtimeReducer', () => {
     expect(next.session.workflowContext).toBe('analytics');
   });
 
+  it('treats ui.presented and interaction.measured as observational passthrough events', () => {
+    const base = createInitialRuntimeState();
+    const presented = createRuntimeEvent('ui.presented', {
+      surface: {
+        uiId: 'ui-123',
+        surfaceHash: '1234abcd',
+        layout: 'stack',
+        componentCount: 1,
+        interactiveCount: 0,
+        actionableCount: 0,
+        componentFamilies: ['text'],
+        actionFamilies: [],
+      },
+    });
+    const afterPresented = runtimeReducer(base, presented);
+    expect(afterPresented.lastEventId).toBe(presented.id);
+    expect(afterPresented.ui.spec).toBeNull();
+
+    const measured = createRuntimeEvent('interaction.measured', {
+      interactionEventId: 'evt-interaction',
+      elementId: 'btn-1',
+      componentName: 'Button',
+      action: 'submit',
+      measurement: {
+        modality: 'pointer',
+        componentFamily: 'action',
+        actionFamily: 'activate',
+        targetWidthPx: 120,
+        targetHeightPx: 40,
+      },
+    });
+    const afterMeasured = runtimeReducer(afterPresented, measured);
+    expect(afterMeasured.lastEventId).toBe(measured.id);
+    expect(afterMeasured.memory.interactions).toHaveLength(0);
+  });
+
   it('keeps only the newest 100 interactions in order', () => {
     let state = createInitialRuntimeState();
 

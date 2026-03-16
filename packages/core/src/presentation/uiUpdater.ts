@@ -1,5 +1,5 @@
 import type { UIComponentSpec, UIRenderSpec } from '../types';
-import { deepClone } from '../clone';
+import { cloneBindings, cloneRenderSpec } from '../clone';
 import type {
   BindingValueExpression,
   LocalPatchOperation,
@@ -12,14 +12,6 @@ import type {
 
 const DEFAULT_MAX_PATCH_OPERATIONS = 300;
 const DEFAULT_MAX_PATCH_OPERATIONS_PER_COMPONENT = 6;
-
-function cloneSpec(spec: UIRenderSpec): UIRenderSpec {
-  return deepClone(spec);
-}
-
-function cloneBindings(bindings: UIBinding[]): UIBinding[] {
-  return deepClone(bindings);
-}
 
 function findComponentById(nodes: UIComponentSpec[], id: string): UIComponentSpec | null {
   for (const node of nodes) {
@@ -118,7 +110,7 @@ export function applyPresentationOperations(
 
   const ensureSpecMutable = () => {
     if (specMutable) return;
-    spec = cloneSpec(baseSpec);
+    spec = cloneRenderSpec(baseSpec);
     specMutable = true;
   };
 
@@ -195,8 +187,8 @@ export interface PatchPerformanceOptions {
 }
 
 /**
- * Acts on a computed PresentationPlan, attempting to apply its differential operations 
- * or falling back to a full UI spec rebuild if the operations exceed established time complexity bounds.
+ * Acts on a computed PresentationPlan, attempting to apply its differential operations
+ * or escalating to a full UI spec rebuild if the operations exceed established time complexity bounds.
  */
 export function applyPresentationPlan(
   currentSpec: UIRenderSpec | null,
@@ -205,25 +197,29 @@ export function applyPresentationPlan(
   opts?: PatchPerformanceOptions
 ): PresentationPlanApplicationResult {
   const modeApplied: PresentationMode = plan.mode;
-  const planSpec = cloneSpec(plan.ui_spec);
-  const planBindings = cloneBindings(plan.bindings);
+  const clonePlanProjection = () => ({
+    spec: cloneRenderSpec(plan.ui_spec),
+    bindings: cloneBindings(plan.bindings),
+  });
 
   if (plan.mode === 'rebuild' || !currentSpec) {
+    const projection = clonePlanProjection();
     return {
-      spec: planSpec,
-      bindings: planBindings,
+      spec: projection.spec,
+      bindings: projection.bindings,
       modeApplied,
-      fallbackToRebuild: false,
+      rebuildEscalated: false,
       appliedOperations: plan.operations?.length ?? 0,
     };
   }
 
   if (!plan.operations || plan.operations.length === 0) {
+    const projection = clonePlanProjection();
     return {
-      spec: planSpec,
-      bindings: planBindings,
+      spec: projection.spec,
+      bindings: projection.bindings,
       modeApplied,
-      fallbackToRebuild: true,
+      rebuildEscalated: true,
       appliedOperations: 0,
     };
   }
@@ -236,24 +232,26 @@ export function applyPresentationPlan(
   const exceedsRelativeBudget = operationCount > componentCount * maxPatchOpsPerComponent;
 
   if (exceedsAbsoluteBudget || exceedsRelativeBudget) {
+    const projection = clonePlanProjection();
     return {
-      spec: planSpec,
-      bindings: planBindings,
+      spec: projection.spec,
+      bindings: projection.bindings,
       modeApplied: 'rebuild',
-      fallbackToRebuild: true,
+      rebuildEscalated: true,
       appliedOperations: 0,
     };
   }
 
   const result = applyPresentationOperations(currentSpec, currentBindings, plan.operations);
-  const fallbackToRebuild = result.failedOperations > 0;
+  const rebuildEscalated = result.failedOperations > 0;
 
-  if (fallbackToRebuild) {
+  if (rebuildEscalated) {
+    const projection = clonePlanProjection();
     return {
-      spec: planSpec,
-      bindings: planBindings,
+      spec: projection.spec,
+      bindings: projection.bindings,
       modeApplied: 'rebuild',
-      fallbackToRebuild: true,
+      rebuildEscalated: true,
       appliedOperations: result.appliedOperations,
     };
   }
@@ -262,25 +260,26 @@ export function applyPresentationPlan(
     spec: result.spec,
     bindings: result.bindings,
     modeApplied: 'patch',
-    fallbackToRebuild: false,
+    rebuildEscalated: false,
     appliedOperations: result.appliedOperations,
   };
 }
 
-function getComponentById(spec: UIRenderSpec, id: string): UIComponentSpec | null {
-  return findComponentById(spec.components, id);
-}
 
 export function setComponentProp(
   spec: UIRenderSpec,
   targetId: string,
   propName: string,
   value: unknown
-): boolean {
-  const target = getComponentById(spec, targetId);
-  if (!target) return false;
-  target.props[propName] = value;
-  return true;
+): UIRenderSpec {
+  const target = findComponentById(spec.components, targetId);
+  if (!target || target.props[propName] === value) return spec;
+
+  return applyLocalUIUpdates(spec, [{
+    targetId,
+    propName,
+    value: value as BindingValueExpression,
+  }], (v) => v).updatedSpec;
 }
 
 /**

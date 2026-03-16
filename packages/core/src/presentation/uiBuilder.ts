@@ -1,18 +1,20 @@
 /**
- * Fallback projection builders for data/tools -> UI spec/bindings.
+ * Deterministic projection builders for data/tools -> UI spec/bindings.
  * Used when no agent candidate spec is provided.
  */
 import type { UIComponentSpec, UIRenderSpec } from '../types';
 import type {
   DataNode,
-  FallbackComponentTypes,
+  ProjectionComponentTypes,
   PresentationPlan,
   PresentationSkill,
   ToolManifest,
   UIBinding,
+  BindingAction,
 } from './types';
+import type { InteractionTrigger } from '../types';
 
-export const DEFAULT_FALLBACK_COMPONENT_TYPES: FallbackComponentTypes = {
+export const DEFAULT_PROJECTION_COMPONENT_TYPES: ProjectionComponentTypes = {
   heading: 'Heading',
   card: 'Card',
   image: 'Image',
@@ -23,11 +25,11 @@ export const DEFAULT_FALLBACK_COMPONENT_TYPES: FallbackComponentTypes = {
   button: 'Button',
 };
 
-function resolveFallbackComponentTypes(
-  overrides?: Partial<FallbackComponentTypes>
-): FallbackComponentTypes {
+function resolveProjectionComponentTypes(
+  overrides?: Partial<ProjectionComponentTypes>
+): ProjectionComponentTypes {
   return {
-    ...DEFAULT_FALLBACK_COMPONENT_TYPES,
+    ...DEFAULT_PROJECTION_COMPONENT_TYPES,
     ...overrides,
   };
 }
@@ -36,19 +38,44 @@ function toSafeText(input: unknown, max = 280): string {
   const raw =
     typeof input === 'string'
       ? input
-      : JSON.stringify(input, null, 2);
+      : safeStringify(input);
   if (raw.length <= max) return raw;
   return `${raw.slice(0, max)}...`;
 }
 
+function safeStringify(input: unknown): string {
+  try {
+    return JSON.stringify(input, createCircularReplacer(), 2);
+  } catch {
+    return '[unserializable data]';
+  }
+}
+
+function createCircularReplacer(): (key: string, value: unknown) => unknown {
+  const seen = new WeakSet<object>();
+
+  return (_key: string, value: unknown) => {
+    if (typeof value !== 'object' || value === null) {
+      return value;
+    }
+
+    if (seen.has(value)) {
+      return '[circular]';
+    }
+
+    seen.add(value);
+    return value;
+  };
+}
+
 function buildDataNodeComponent(
   node: DataNode,
-  fallbackComponents: FallbackComponentTypes,
+  projectionComponents: ProjectionComponentTypes,
 ): UIComponentSpec {
   const baseId = `data-node-${node.id}`;
   const header: UIComponentSpec = {
     id: `${baseId}-heading`,
-    type: fallbackComponents.heading,
+    type: projectionComponents.heading,
     props: {
       text: node.metadata?.label ?? node.id,
       level: 3,
@@ -60,7 +87,7 @@ function buildDataNodeComponent(
     const src = typeof payload === 'string' ? payload : payload?.src;
     return {
       id: baseId,
-      type: fallbackComponents.card,
+      type: projectionComponents.card,
       props: {
         title: node.metadata?.title ?? 'Image',
         dataNodeId: node.id,
@@ -69,7 +96,7 @@ function buildDataNodeComponent(
         header,
         {
           id: `${baseId}-image`,
-          type: fallbackComponents.image,
+          type: projectionComponents.image,
           props: {
             src: src ?? '',
             alt: typeof payload === 'object' ? payload?.alt : node.id,
@@ -83,7 +110,7 @@ function buildDataNodeComponent(
   if (node.kind === 'array' && Array.isArray(node.payload)) {
     return {
       id: baseId,
-      type: fallbackComponents.card,
+      type: projectionComponents.card,
       props: {
         title: node.metadata?.title ?? 'Array Data',
         dataNodeId: node.id,
@@ -92,13 +119,13 @@ function buildDataNodeComponent(
         header,
         {
           id: `${baseId}-list`,
-          type: fallbackComponents.list,
+          type: projectionComponents.list,
           props: {
             title: `${node.payload.length} items`,
           },
           children: node.payload.slice(0, 20).map((item, index) => ({
             id: `${baseId}-item-${index}`,
-            type: fallbackComponents.listItem,
+            type: projectionComponents.listItem,
             props: {
               text: toSafeText(item, 140),
             },
@@ -112,7 +139,7 @@ function buildDataNodeComponent(
     const payload = node.payload as { content?: string; title?: string } | string;
     return {
       id: baseId,
-      type: fallbackComponents.card,
+      type: projectionComponents.card,
       props: {
         title: typeof payload === 'object' ? payload?.title ?? 'Document' : 'Document',
         dataNodeId: node.id,
@@ -121,7 +148,7 @@ function buildDataNodeComponent(
         header,
         {
           id: `${baseId}-text`,
-          type: fallbackComponents.text,
+          type: projectionComponents.text,
           props: {
             content: toSafeText(
               typeof payload === 'string' ? payload : payload?.content ?? payload,
@@ -135,7 +162,7 @@ function buildDataNodeComponent(
 
   return {
     id: baseId,
-    type: fallbackComponents.card,
+    type: projectionComponents.card,
     props: {
       title: node.metadata?.title ?? `Data Node (${node.kind})`,
       dataNodeId: node.id,
@@ -144,7 +171,7 @@ function buildDataNodeComponent(
       header,
       {
         id: `${baseId}-text`,
-        type: fallbackComponents.text,
+        type: projectionComponents.text,
         props: {
           content: toSafeText(node.payload, 900),
         },
@@ -155,7 +182,7 @@ function buildDataNodeComponent(
 
 function buildToolComponentsAndBindings(
   tools: ToolManifest[],
-  fallbackComponents: FallbackComponentTypes,
+  projectionComponents: ProjectionComponentTypes,
 ): { components: UIComponentSpec[]; bindings: UIBinding[] } {
   if (tools.length === 0) {
     return { components: [], bindings: [] };
@@ -164,14 +191,14 @@ function buildToolComponentsAndBindings(
   const components: UIComponentSpec[] = [
     {
       id: 'tools-section',
-      type: fallbackComponents.section,
+      type: projectionComponents.section,
       props: {
         title: 'Available Actions',
         description: 'Agent-bound tools available for direct runtime execution.',
       },
       children: tools.map((tool) => ({
         id: `tool-btn-${tool.id}`,
-        type: fallbackComponents.button,
+        type: projectionComponents.button,
         props: {
           label: tool.name,
         },
@@ -209,12 +236,12 @@ export interface PresentationProjection {
   bindings: UIBinding[];
 }
 
-export interface BuildUIFromDataOptions {
+export interface BuildProjectionFromContextOptions {
   workflowContext?: string;
   availableWorkflowContexts?: PresentationSkill[];
   newUserContext?: string;
-  /** Override semantic fallback component slots for non-default renderers. */
-  fallbackComponents?: Partial<FallbackComponentTypes>;
+  /** Override semantic projection component slots for non-default renderers. */
+  projectionComponents?: Partial<ProjectionComponentTypes>;
 }
 
 function resolveWorkflowContext(
@@ -225,7 +252,7 @@ function resolveWorkflowContext(
   return availableWorkflowContexts?.find((skill) => skill.name === workflowContext);
 }
 
-function resolveWorkflowInputs(options?: BuildUIFromDataOptions): {
+function resolveWorkflowInputs(options?: BuildProjectionFromContextOptions): {
   name: string | undefined;
   definitions: PresentationSkill[] | undefined;
 } {
@@ -235,7 +262,7 @@ function resolveWorkflowInputs(options?: BuildUIFromDataOptions): {
   };
 }
 
-function chooseLayout(options?: BuildUIFromDataOptions): UIRenderSpec['layout'] {
+function chooseLayout(options?: BuildProjectionFromContextOptions): UIRenderSpec['layout'] {
   const workflow = resolveWorkflowInputs(options);
   const workflowDefinition = resolveWorkflowContext(workflow.name, workflow.definitions);
   if (workflowDefinition?.defaultLayout) return workflowDefinition.defaultLayout;
@@ -246,7 +273,7 @@ function chooseLayout(options?: BuildUIFromDataOptions): UIRenderSpec['layout'] 
 function buildSkillContextComponents(
   workflowContextName: string | undefined,
   availableWorkflowContexts: PresentationSkill[] | undefined,
-  fallbackComponents: FallbackComponentTypes,
+  projectionComponents: ProjectionComponentTypes,
 ): UIComponentSpec[] {
   if (!workflowContextName?.trim()) return [];
   const workflowDefinition = resolveWorkflowContext(workflowContextName, availableWorkflowContexts);
@@ -274,7 +301,7 @@ function buildSkillContextComponents(
   return [
     {
       id: 'skill-section',
-      type: fallbackComponents.section,
+      type: projectionComponents.section,
       props: {
         title,
         description,
@@ -282,7 +309,7 @@ function buildSkillContextComponents(
       children: [
         {
           id: 'skill-section-summary',
-          type: fallbackComponents.text,
+          type: projectionComponents.text,
           props: {
             content: summary,
             muted: true,
@@ -294,29 +321,29 @@ function buildSkillContextComponents(
 }
 
 /**
- * Builds a fallback UI specification and associated bindings from data + tools.
+ * Builds a deterministic UI projection and associated bindings from data + tools.
  * Agent-provided candidate specs should be preferred in reasoning-driven flows.
  */
-export function buildUIFromData(
+export function buildProjectionFromContext(
   dataNodes: DataNode[],
   tools: ToolManifest[],
-  options?: BuildUIFromDataOptions
+  options?: BuildProjectionFromContextOptions
 ): PresentationProjection {
-  const fallbackComponents = resolveFallbackComponentTypes(options?.fallbackComponents);
-  const dataComponents = dataNodes.map((node) => buildDataNodeComponent(node, fallbackComponents));
-  const toolProjection = buildToolComponentsAndBindings(tools, fallbackComponents);
+  const projectionComponents = resolveProjectionComponentTypes(options?.projectionComponents);
+  const dataComponents = dataNodes.map((node) => buildDataNodeComponent(node, projectionComponents));
+  const toolProjection = buildToolComponentsAndBindings(tools, projectionComponents);
   const workflow = resolveWorkflowInputs(options);
   const skillContextComponents = buildSkillContextComponents(
     workflow.name,
     workflow.definitions,
-    fallbackComponents,
+    projectionComponents,
   );
 
   const allComponents: UIComponentSpec[] = [...skillContextComponents];
   if (dataComponents.length > 0) {
     allComponents.push({
       id: 'data-section',
-      type: fallbackComponents.section,
+      type: projectionComponents.section,
       props: {
         title: 'Data Context',
         description: `${dataNodes.length} data node(s)`,
@@ -345,40 +372,11 @@ export function buildUIFromData(
 export function extractBindingsFromSpec(spec: UIRenderSpec): PresentationPlan {
   const bindings: UIBinding[] = [];
 
-  const walk = (components: UIRenderSpec['components']) => {
+  const walk = (components: UIComponentSpec[]) => {
     for (const component of components) {
+      // 1) Explicit interactions
       for (const [interactionIndex, interaction] of (component.interactions ?? []).entries()) {
-        const action = interaction.tool_call
-          ? {
-              type: 'tool_call' as const,
-              toolId: interaction.tool_call.name,
-              args: interaction.tool_call.parameters,
-            }
-          : interaction.targetIds?.length
-          ? {
-              type: 'local_patch' as const,
-              patches: interaction.targetIds.map((targetId) => ({
-                targetId,
-                propName: 'lastAction',
-                value: interaction.targetAction ?? interaction.action,
-                })),
-              }
-          : interaction.url || interaction.route
-          ? {
-              type: 'url_navigation' as const,
-              url: interaction.url,
-              route: interaction.route,
-              description: interaction.description,
-            }
-          : {
-              type: 'semantic_event' as const,
-              semanticAction: interaction.action,
-              description: interaction.description,
-              payload: {
-                targetAction: interaction.targetAction ?? interaction.action,
-                targetIds: interaction.targetIds ?? [],
-              },
-            };
+        const action = buildBindingAction(interaction);
 
         bindings.push({
           id: `binding-${component.id}-${interaction.action}-${interaction.trigger}-${interactionIndex}`,
@@ -388,6 +386,52 @@ export function extractBindingsFromSpec(spec: UIRenderSpec): PresentationPlan {
           description: interaction.description,
           action,
         });
+      }
+
+      // 2) Native bi-directional bindings (implicit or via bindTo)
+      const boundNodes = new Set<string>(component.bindTo || []);
+
+      // Discover implicit bindings from props
+      if (component.props) {
+        Object.values(component.props).forEach((propValue: any) => {
+          if (propValue && typeof propValue === 'object' && propValue.$data) {
+            const nodeId = propValue.$data.nodeId || propValue.$data;
+            if (typeof nodeId === 'string') {
+              boundNodes.add(nodeId);
+            }
+          }
+        });
+      }
+
+      if (boundNodes.size > 0) {
+        let bindIndex = 0;
+        for (const bindId of boundNodes) {
+          // Automatic binding for common input components
+          // If a component has bindTo or $data props, it usually means "update this node on change"
+          
+          // Smart Path Inference: if 'value' prop is bound to this node, use its path
+          let inferredPath: string | undefined = undefined;
+          const valueProp = component.props?.value as any;
+          if (valueProp && typeof valueProp === 'object' && valueProp.$data) {
+            const nodeId = valueProp.$data.nodeId || valueProp.$data;
+            if (nodeId === bindId) {
+              inferredPath = valueProp.$data.path;
+            }
+          }
+
+          bindings.push({
+            id: `binding-auto-${component.id}-${bindId}-${bindIndex++}`,
+            componentId: component.id,
+            trigger: 'onChange' as InteractionTrigger, // Default trigger for native bind
+            actionMatch: 'value_change', // Standard slider/input action
+            action: {
+              type: 'data_update',
+              nodeId: bindId,
+              path: inferredPath,
+              value: { $event: 'newValue' },
+            },
+          });
+        }
       }
 
       if (component.children?.length) {
@@ -405,5 +449,58 @@ export function extractBindingsFromSpec(spec: UIRenderSpec): PresentationPlan {
     ui_spec: spec,
     bindings,
     rationale_short: 'Extracted bindings from UI component interactions.',
+  };
+}
+
+function buildBindingAction(
+  interaction: NonNullable<UIComponentSpec['interactions']>[number],
+): BindingAction {
+  if (interaction.tool_call) {
+    return {
+      type: 'tool_call' as const,
+      toolId: interaction.tool_call.name,
+      args: interaction.tool_call.parameters,
+    };
+  }
+
+  // Handle explicit data_update if provided in spec
+  const rawAction = interaction.action as any;
+  if (typeof rawAction === 'object' && rawAction !== null && rawAction.type === 'data_update') {
+    return {
+      type: 'data_update' as const,
+      nodeId: rawAction.nodeId,
+      path: rawAction.path,
+      value: rawAction.value,
+    };
+  }
+
+  if (interaction.targetIds?.length) {
+    return {
+      type: 'local_patch' as const,
+      patches: interaction.targetIds.map((targetId) => ({
+        targetId,
+        propName: 'lastAction',
+        value: interaction.targetAction ?? interaction.action,
+      })),
+    };
+  }
+
+  if (interaction.url || interaction.route) {
+    return {
+      type: 'url_navigation' as const,
+      url: interaction.url,
+      route: interaction.route,
+      description: interaction.description,
+    };
+  }
+
+  return {
+    type: 'semantic_event' as const,
+    semanticAction: interaction.action,
+    description: interaction.description,
+    payload: {
+      targetAction: interaction.targetAction ?? interaction.action,
+      targetIds: interaction.targetIds ?? [],
+    },
   };
 }

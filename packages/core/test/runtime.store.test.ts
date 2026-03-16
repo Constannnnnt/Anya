@@ -127,6 +127,27 @@ describe('createRuntimeStore', () => {
     expect(String(onEffectError.mock.calls[0][0])).toContain('listener exploded');
   });
 
+  it('notifies a stable snapshot of subscribers for one dispatch cycle', () => {
+    const store = createRuntimeStore();
+    const order: string[] = [];
+    let unsubscribeSecond = () => {};
+
+    store.subscribe(() => {
+      order.push('first');
+      unsubscribeSecond();
+    });
+    unsubscribeSecond = store.subscribe(() => {
+      order.push('second');
+    });
+    store.subscribe(() => {
+      order.push('third');
+    });
+
+    store.dispatch(createRuntimeEvent('session.status_set', { status: 'thinking' }));
+
+    expect(order).toEqual(['first', 'second', 'third']);
+  });
+
   it('replaces effects at runtime', () => {
     const first = vi.fn();
     const second = vi.fn();

@@ -4,7 +4,7 @@ import type { UIInteractionRecord, UIRenderSpec } from '../src/types';
 import type { ToolManifest, UIBinding } from '../src/presentation/types';
 import { createPresentationEngine } from '../src/presentation/uiEngine';
 import { planUIUpdate } from '../src/presentation/updatePlanner';
-import { buildUIFromData } from '../src/presentation/uiBuilder';
+import { buildProjectionFromContext } from '../src/presentation/uiBuilder';
 import { ToolRuntime } from '../src/presentation/tools';
 
 function createInteraction(patch?: Partial<UIInteractionRecord>): UIInteractionRecord {
@@ -27,7 +27,7 @@ const rotateTool: ToolManifest = {
 
 describe('presentation runtime (v0 scenarios)', () => {
   it('projects data context and tool affordances into UI + bindings', () => {
-    const projection = buildUIFromData(
+    const projection = buildProjectionFromContext(
       [
         {
           id: 'doc-a',
@@ -58,8 +58,8 @@ describe('presentation runtime (v0 scenarios)', () => {
     expect(rotateButton?.interactions?.[0].action).toBe('tool:rotate');
   });
 
-  it('supports custom fallback component names for non-default renderers', () => {
-    const projection = buildUIFromData(
+  it('supports custom projection component names for non-default renderers', () => {
+    const projection = buildProjectionFromContext(
       [
         {
           id: 'doc-a',
@@ -69,7 +69,7 @@ describe('presentation runtime (v0 scenarios)', () => {
       ],
       [rotateTool],
       {
-        fallbackComponents: {
+        projectionComponents: {
           heading: 'TitleBlock',
           card: 'Panel',
           text: 'CopyBlock',
@@ -90,12 +90,31 @@ describe('presentation runtime (v0 scenarios)', () => {
     expect(toolSection?.children?.[0].type).toBe('ActionButton');
   });
 
-  it('threads fallback component names through deterministic planner rebuilds', () => {
+  it('serializes circular projected data payloads without throwing', () => {
+    const payload: Record<string, unknown> = { name: 'loop' };
+    payload.self = payload;
+
+    const projection = buildProjectionFromContext(
+      [
+        {
+          id: 'doc-circular',
+          kind: 'object',
+          payload,
+        },
+      ],
+      [],
+    );
+
+    const textComponent = projection.spec.components[0].children?.[0].children?.[1];
+    expect(textComponent?.props.content).toContain('[circular]');
+  });
+
+  it('threads projection component names through deterministic planner rebuilds', () => {
     const plan = planUIUpdate({
       context_version: 0,
       dataNodes: [{ id: 'doc-1', kind: 'document', payload: { title: 'Doc', content: 'A' } }],
       tools: [rotateTool],
-      fallbackComponents: {
+      projectionComponents: {
         section: 'Group',
         card: 'Panel',
         heading: 'TitleBlock',
@@ -141,7 +160,7 @@ describe('presentation runtime (v0 scenarios)', () => {
           toolId: 'rotate',
           args: {
             degrees: { $event: 'newValue' },
-            sourceImage: { $data: { nodeId: 'img-1', path: 'payload.src', fallback: 'none' } },
+            sourceImage: { $data: { nodeId: 'img-1', path: 'payload.src' } },
           },
           resultPatches: [
             {
@@ -188,7 +207,7 @@ describe('presentation runtime (v0 scenarios)', () => {
   });
 
   it('removes stale sections and tool bindings when context is emptied', () => {
-    const initialProjection = buildUIFromData(
+    const initialProjection = buildProjectionFromContext(
       [{ id: 'doc-1', kind: 'document', payload: { title: 'Doc', content: 'A' } }],
       [rotateTool]
     );
@@ -218,6 +237,33 @@ describe('presentation runtime (v0 scenarios)', () => {
     expect(applied.modeApplied).toBe('patch');
     expect(applied.spec.components).toHaveLength(0);
     expect(applied.bindings).toHaveLength(0);
+  });
+
+  it('does not roll back presentation state when a subscriber throws', () => {
+    const engine = createPresentationEngine();
+    engine.subscribe(() => {
+      throw new Error('listener failed');
+    });
+
+    expect(() => engine.applyPlan({
+      plan_version: 0,
+      mode: 'rebuild',
+      confidence: 1,
+      ui_spec: {
+        layout: 'stack',
+        components: [
+          {
+            id: 'status-text',
+            type: 'Text',
+            props: { content: 'ready' },
+          },
+        ],
+      },
+      bindings: [],
+      rationale_short: 'test',
+    })).not.toThrow();
+
+    expect(engine.getState().currentSpec?.components[0].props.content).toBe('ready');
   });
 
   it('synchronizes runtime tool registry when tool set is replaced', async () => {
@@ -442,6 +488,117 @@ describe('presentation runtime (v0 scenarios)', () => {
     expect(second[0].status).toBe('error');
     expect(second[0].error).toContain("Unknown tool 'rotate'");
     expect(engine.getState().context.tools).toHaveLength(0);
+  });
+
+  it('does not let stale tool cleanup remove a newer registration', async () => {
+    const spec: UIRenderSpec = {
+      layout: 'stack',
+      components: [
+        {
+          id: 'rotate-btn',
+          type: 'Button',
+          props: { label: 'Rotate' },
+        },
+      ],
+    };
+
+    const bindings: UIBinding[] = [
+      {
+        id: 'binding-rotate',
+        componentId: 'rotate-btn',
+        actionMatch: 'tool:rotate',
+        action: {
+          type: 'tool_call',
+          toolId: 'rotate',
+        },
+      },
+    ];
+
+    const engine = createPresentationEngine({
+      initialContext: {
+        currentSpec: spec,
+        currentBindings: bindings,
+      },
+    });
+
+    const unregisterFirst = engine.registerTool(rotateTool, () => ({ version: 'first' }));
+    const replacementTool: ToolManifest = {
+      ...rotateTool,
+      description: 'Replacement rotate tool',
+    };
+    engine.registerTool(replacementTool, () => ({ version: 'second' }));
+
+    unregisterFirst();
+
+    const records = await engine.executeInteraction(createInteraction());
+    expect(records[0].status).toBe('success');
+    expect(records[0].result).toEqual({ version: 'second' });
+    expect(engine.getState().context.tools).toEqual([replacementTool]);
+  });
+
+  it('clears a stale handler when a tool is re-registered without a replacement handler', async () => {
+    const spec: UIRenderSpec = {
+      layout: 'stack',
+      components: [
+        {
+          id: 'rotate-btn',
+          type: 'Button',
+          props: { label: 'Rotate' },
+        },
+      ],
+    };
+
+    const bindings: UIBinding[] = [
+      {
+        id: 'binding-rotate',
+        componentId: 'rotate-btn',
+        actionMatch: 'tool:rotate',
+        action: {
+          type: 'tool_call',
+          toolId: 'rotate',
+        },
+      },
+    ];
+
+    const engine = createPresentationEngine({
+      initialContext: {
+        currentSpec: spec,
+        currentBindings: bindings,
+      },
+    });
+
+    engine.registerTool(rotateTool, () => ({ version: 'first' }));
+    engine.registerTool({
+      ...rotateTool,
+      description: 'Replacement without handler',
+    });
+
+    const records = await engine.executeInteraction(createInteraction());
+    expect(records[0].status).toBe('error');
+    expect(records[0].error).toContain("No handler registered for tool 'rotate'");
+  });
+
+  it('does not let stale tool handler cleanup remove a newer handler', async () => {
+    const runtime = new ToolRuntime();
+    runtime.registerTool(rotateTool);
+
+    const unregisterFirst = runtime.registerHandler('rotate', () => ({ version: 'first' }));
+    runtime.registerHandler('rotate', () => ({ version: 'second' }));
+
+    unregisterFirst();
+
+    const execution = await runtime.executeToolCall(
+      {
+        type: 'tool_call',
+        toolId: 'rotate',
+      },
+      {
+        interaction: createInteraction(),
+        dataNodes: [],
+      },
+    );
+
+    expect(execution.result).toEqual({ version: 'second' });
   });
 
   it('respects binding trigger matching when interaction trigger is provided', async () => {
@@ -724,7 +881,7 @@ describe('presentation runtime (v0 scenarios)', () => {
     expect(finalStatus).toBe('done');
   });
 
-  it('uses busy fallback for risky tool calls until completion', async () => {
+  it('uses a busy state for risky tool calls until completion', async () => {
     const spec: UIRenderSpec = {
       layout: 'stack',
       components: [
@@ -929,6 +1086,76 @@ describe('presentation runtime (v0 scenarios)', () => {
     expect(records[0].status).toBe('success');
     expect(records[0].result).toEqual({ intercepted: true });
     expect(finalStatus).toBe('idle');
+  });
+
+  it('does not let stale binding-action cleanup remove a newer override', async () => {
+    const spec: UIRenderSpec = {
+      layout: 'stack',
+      components: [
+        {
+          id: 'status-text',
+          type: 'Text',
+          props: { content: 'idle' },
+        },
+        {
+          id: 'rotate-btn',
+          type: 'Button',
+          props: { label: 'Rotate' },
+        },
+      ],
+    };
+
+    const engine = createPresentationEngine({
+      initialContext: {
+        currentSpec: spec,
+        currentBindings: [
+          {
+            id: 'binding-local',
+            componentId: 'rotate-btn',
+            actionMatch: 'tool:rotate',
+            action: {
+              type: 'local_patch',
+              patches: [
+                {
+                  targetId: 'status-text',
+                  propName: 'content',
+                  value: 'patched',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const unregisterFirst = engine.registerBindingActionHandler('local_patch', async ({ spec: currentSpec, binding, input }) => ({
+      updatedSpec: currentSpec,
+      record: {
+        bindingId: binding.id,
+        interaction: input.interaction,
+        timestamp: Date.now(),
+        durationMs: 0,
+        status: 'success',
+        result: { intercepted: 'first' },
+      },
+    }));
+
+    engine.registerBindingActionHandler('local_patch', async ({ spec: currentSpec, binding, input }) => ({
+      updatedSpec: currentSpec,
+      record: {
+        bindingId: binding.id,
+        interaction: input.interaction,
+        timestamp: Date.now(),
+        durationMs: 0,
+        status: 'success',
+        result: { intercepted: 'second' },
+      },
+    }));
+
+    unregisterFirst();
+
+    const records = await engine.executeInteraction(createInteraction());
+    expect(records[0].result).toEqual({ intercepted: 'second' });
   });
 
   it('emits semantic_event records as skipped by default', async () => {

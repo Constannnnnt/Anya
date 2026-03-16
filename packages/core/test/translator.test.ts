@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { decode, encode, normalizeStyleProp } from '../src/translator';
+import { decode, encode, findStableSpecCandidate, normalizeStyleProp } from '../src/translator';
 import { ComponentCatalog } from '../src/registry/catalog';
 import { ContextMemoryManager } from '../src/memory/context';
 
@@ -50,10 +50,19 @@ components: []
       expect(result.layout).toBe('grid');
     });
 
-    it('gracefully handles empty input', () => {
-      const result = decode("", catalog);
-      expect(result.components).toHaveLength(0);
-      expect(result.layout).toBe('stack');
+    it('preserves profile observations in decoded specs', () => {
+      const rawText = `
+spec_version: 1
+layout: stack
+profile_observation: "User prefers compact card layouts."
+components: []
+`;
+      const result = decode(rawText, catalog);
+      expect(result.profile_observation).toBe('User prefers compact card layouts.');
+    });
+
+    it('throws for empty input', () => {
+      expect(() => decode("", catalog)).toThrow(/Empty YAML after extraction/);
     });
 
     it('throws an error for unparseable YAML', () => {
@@ -128,15 +137,13 @@ components: []
       expect(result.layout).toBe('split');
     });
 
-    it('does not throw when components is not an array', () => {
+    it('throws when components is not an array', () => {
       const rawText = `
 spec_version: 1
 layout: stack
 components: "not-an-array"
 `;
-      const result = decode(rawText, catalog);
-      expect(result.layout).toBe('stack');
-      expect(result.components).toHaveLength(0);
+      expect(() => decode(rawText, catalog)).toThrow(/components.*array/i);
     });
 
     it('sanitizes malformed interactions and props safely', () => {
@@ -267,6 +274,40 @@ components:
         color: 'red',
         fontSize: '14px',
       });
+    });
+
+    it('finds a stable trailing-prefix candidate for truncated specs', () => {
+      const rawText = `
+spec_version: 1
+layout: stack
+components:
+  - id: text-1
+    type: Text
+    props:
+      content: "Hello"
+  - id: card-1
+    type: Card
+    props:
+      title: "Details"
+    interactions:
+      - trigger: onClick
+        description: "Unclosed
+`;
+      const candidate = findStableSpecCandidate(rawText, { minimumRetentionRatio: 0.5 });
+      expect(candidate).not.toBeNull();
+      expect(candidate?.raw).toContain('title: "Details"');
+      expect(candidate?.trimmedLineCount).toBeGreaterThan(0);
+    });
+
+    it('returns null when no valid spec envelope can be salvaged', () => {
+      const rawText = `
+layout:
+  nested: invalid
+components:
+  - type:
+      broken: true
+`;
+      expect(findStableSpecCandidate(rawText)).toBeNull();
     });
 
   });
