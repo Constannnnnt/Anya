@@ -63,16 +63,17 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "tsc && tsc -p tsconfig.cjs.json && node scripts/postbuild.mjs",
+    "build": "node scripts/clean-build.mjs && tsc && tsc -p tsconfig.cjs.json && node scripts/postbuild.mjs",
     "dev": "tsc --watch",
     "lint": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --pool=threads",
     "bench": "npm run build && node bench/optimistic-update.bench.mjs",
     "bench:memory-store-read": "npm run build && node bench/memory-store-read.bench.mjs",
     "bench:memory-store-query": "npm run build && node bench/memory-store-query.bench.mjs",
     "prepublishOnly": "npm run lint && npm run test && npm run build"
   },
   "dependencies": {
+    "valtio": "^2.3.1",
     "yaml": "^2.7.0",
     "zod": "^3.24.0"
   },

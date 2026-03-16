@@ -15,7 +15,7 @@ import { DynamicOrchestrator } from './orchestrator';
 import { LocalStorageAdapter } from './storage/localStorage';
 import { InMemoryStorage } from './storage/memory';
 import type { FileStorage } from './storage/interface';
-import type { ModelTransport } from './transport/interface';
+import type { AgentSessionTransport } from './session';
 import {
   createRuntimeEvent,
   createRuntimeStore,
@@ -37,6 +37,17 @@ import { UiEventCollector } from './memory/ui/eventCollector';
 import { TriggerManager } from './memory/ui/triggerManager';
 import { UiMemoryPipeline } from './memory/ui/pipeline';
 import {
+  DEFAULT_FINDING_INTERPRETER_POLICY,
+  InMemoryBehaviorStore,
+  UiBehaviorPipeline,
+  type BehaviorAnalysisRunCapture,
+  type BehaviorAnalyzer,
+  type BehaviorStore,
+  type FindingInterpreterPolicy,
+  type UiBehaviorPipelineConfig,
+  type BehaviorSchedulerPolicy,
+} from './memory/ui/behavior';
+import {
   createMemoryStoreByPolicySync,
   type MemoryStorePolicy,
   type MemoryStoreRuntime,
@@ -50,7 +61,7 @@ export interface AnyaKernelConfig {
   workflowContexts?: SkillDefinition[];
   allowedCapabilities?: ComponentCapability[];
   storage?: FileStorage;
-  transport?: ModelTransport;
+  sessionTransport?: AgentSessionTransport;
   maxInteractions?: number;
   maxReasoningTraces?: number;
   onPersistError?: (error: unknown) => void;
@@ -75,7 +86,8 @@ export interface AnyaKernelConfig {
     storeRuntime?: MemoryStoreRuntime;
     sqlite?: SQLiteMemoryStoreOptions;
     indexeddb?: IndexedDbMemoryStoreOptions;
-    fallbackToMemory?: boolean;
+    /** Explicit opt-in for downgrading a requested persistent store to memory. */
+    allowMemoryDowngrade?: boolean;
     triggerConfig?: import('./memory/ui/triggerManager').TriggerConfig;
     retrievalConfig?: import('./memory/ui/retrieval').RetrievalConfig;
     runPrompt?: import('./memory/ui/extractionWorker').PromptRunner;
@@ -83,6 +95,18 @@ export interface AnyaKernelConfig {
     syncTimeoutMs?: number;
     materializeProfile?: boolean;
     getToolManifest?: () => string[];
+    behavior?: {
+      enabled?: boolean;
+      store?: BehaviorStore;
+      analyzers?: BehaviorAnalyzer[];
+      schedulerPolicy?: Partial<BehaviorSchedulerPolicy>;
+      interpreterPolicy?: FindingInterpreterPolicy;
+      windowConfig?: import('./memory/ui/extractionPayload').ExtractionWindowConfig;
+      aggregateWindowMs?: number;
+      syncTimeoutMs?: number;
+      captureSnapshots?: boolean;
+      onCapture?: (capture: BehaviorAnalysisRunCapture) => void;
+    };
   };
 }
 
@@ -110,6 +134,8 @@ export interface AnyaKernel {
   uiEventCollector?: UiEventCollector;
   uiTriggerManager?: TriggerManager;
   uiMemoryPipeline?: UiMemoryPipeline;
+  uiBehaviorStore?: BehaviorStore;
+  uiBehaviorPipeline?: UiBehaviorPipeline;
 }
 
 function registerComponents(catalog: ComponentCatalog, components: ComponentDefinition[]): void {
@@ -171,6 +197,8 @@ export function createAnyaKernel(config?: AnyaKernelConfig): AnyaKernel {
   let uiTriggerManager: TriggerManager | undefined;
   let uiRetrieval: RetrievalComposer | undefined;
   let uiMemoryPipeline: UiMemoryPipeline | undefined;
+  let uiBehaviorStore: BehaviorStore | undefined;
+  let uiBehaviorPipeline: UiBehaviorPipeline | undefined;
 
   if (config?.uiMemory?.enabled) {
     if (config.uiMemory.store) {
@@ -181,7 +209,7 @@ export function createAnyaKernel(config?: AnyaKernelConfig): AnyaKernel {
         runtime: config.uiMemory.storeRuntime,
         sqlite: config.uiMemory.sqlite,
         indexeddb: config.uiMemory.indexeddb,
-        fallbackToMemory: config.uiMemory.fallbackToMemory,
+        allowMemoryDowngrade: config.uiMemory.allowMemoryDowngrade,
       });
     } else {
       // Keep deterministic default behavior for hosts/tests:
@@ -219,6 +247,26 @@ export function createAnyaKernel(config?: AnyaKernelConfig): AnyaKernel {
         '[AnyaKernel] uiMemory is enabled without runPrompt; event collection is active but extraction pipeline is disabled.'
       );
     }
+
+    if (config.uiMemory.behavior?.enabled) {
+      uiBehaviorStore = config.uiMemory.behavior.store ?? new InMemoryBehaviorStore();
+      const behaviorConfig: UiBehaviorPipelineConfig = {
+        actorId: config.uiMemory.actorId,
+        eventStore: uiMemoryStore,
+        trigger: uiTriggerManager,
+        behaviorStore: uiBehaviorStore,
+        analyzers: config.uiMemory.behavior.analyzers,
+        schedulerPolicy: config.uiMemory.behavior.schedulerPolicy,
+        interpreterPolicy: config.uiMemory.behavior.interpreterPolicy,
+        windowConfig: config.uiMemory.behavior.windowConfig ?? config.uiMemory.windowConfig,
+        aggregateWindowMs: config.uiMemory.behavior.aggregateWindowMs,
+        syncTimeoutMs: config.uiMemory.behavior.syncTimeoutMs ?? config.uiMemory.syncTimeoutMs,
+        captureSnapshots: config.uiMemory.behavior.captureSnapshots,
+      };
+      uiBehaviorPipeline = new UiBehaviorPipeline(behaviorConfig);
+      uiBehaviorPipeline.setOnCapture(config.uiMemory.behavior.onCapture);
+      uiBehaviorPipeline.start();
+    }
   }
 
   const orchestrator = new DynamicOrchestrator({
@@ -226,10 +274,14 @@ export function createAnyaKernel(config?: AnyaKernelConfig): AnyaKernel {
     skills: workflowContexts,
     memory,
     profile,
-    transport: config?.transport,
+    sessionTransport: config?.sessionTransport,
     ...(uiMemoryStore && uiRetrieval && config?.uiMemory ? {
       uiMemoryStore,
       uiMemoryRetrieval: uiRetrieval,
+      uiBehaviorStore,
+      uiBehaviorPolicy: uiBehaviorStore
+        ? (config.uiMemory.behavior?.interpreterPolicy ?? DEFAULT_FINDING_INTERPRETER_POLICY)
+        : undefined,
       actorId: config.uiMemory.actorId,
     } : {}),
   });
@@ -335,5 +387,7 @@ export function createAnyaKernel(config?: AnyaKernelConfig): AnyaKernel {
     uiEventCollector,
     uiTriggerManager,
     uiMemoryPipeline,
+    uiBehaviorStore,
+    uiBehaviorPipeline,
   };
 }
