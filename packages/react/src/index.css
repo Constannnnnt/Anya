@@ -247,6 +247,11 @@
   z-index: 1;
   margin-top: 2px;
 }
+
+.anya-timeline-dot .anya-icon {
+  color: var(--accent);
+}
+
 .anya-timeline-content {
   flex: 1;
   min-width: 0;
@@ -307,8 +312,8 @@
   background: var(--anya-bg-glass);
 }
 .anya-list-icon {
-  font-size: 14px;
   flex-shrink: 0;
+  color: var(--accent);
 }
 
 /* ─── Accordion ─── */
@@ -820,6 +825,14 @@
   font-size: 12px;
 }
 
+.anya-empty-state-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  color: var(--accent);
+}
+
 .anya-progress {
   display: flex;
   flex-direction: column;
@@ -981,6 +994,7 @@
   align-items: center;
   justify-content: center;
   color: var(--anya-text-secondary);
+  vertical-align: middle;
 }
 
 .anya-icon-sm { font-size: 14px; }
@@ -1001,4 +1015,3 @@
     background-position: -100% 0;
   }
 }
-
