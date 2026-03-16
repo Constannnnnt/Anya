@@ -19,8 +19,8 @@ export interface MemoryStoreFactoryOptions {
   runtime?: MemoryStoreRuntime;
   sqlite?: SQLiteMemoryStoreOptions;
   indexeddb?: IndexedDbMemoryStoreOptions;
-  /** Fallback to in-memory when selected adapter is unavailable. Default: true */
-  fallbackToMemory?: boolean;
+  /** Explicit opt-in for downgrading to in-memory when the selected adapter is unavailable. */
+  allowMemoryDowngrade?: boolean;
 }
 
 /**
@@ -29,7 +29,7 @@ export interface MemoryStoreFactoryOptions {
 export function createMemoryStoreByPolicySync(options?: MemoryStoreFactoryOptions): MemoryStore {
   const policy = options?.policy ?? 'auto';
   const runtime = options?.runtime ?? detectRuntime();
-  const fallbackToMemory = options?.fallbackToMemory ?? true;
+  const allowMemoryDowngrade = options?.allowMemoryDowngrade ?? false;
 
   const resolveAutoPolicy = (): Exclude<MemoryStorePolicy, 'auto'> => {
     if (runtime === 'browser') return 'indexeddb';
@@ -56,24 +56,15 @@ export function createMemoryStoreByPolicySync(options?: MemoryStoreFactoryOption
         return new InMemoryMemoryStore();
     }
   } catch (error) {
-    if (!fallbackToMemory) {
+    if (!allowMemoryDowngrade) {
       throw new Error(`[MemoryStoreFactory] Failed to initialize '${selectedPolicy}' adapter.`);
     }
     getLogger().warn(
-      `[MemoryStoreFactory] Falling back to in-memory store from '${selectedPolicy}' policy.`,
+      `[MemoryStoreFactory] Downgrading to in-memory store from '${selectedPolicy}' policy.`,
       error
     );
     return new InMemoryMemoryStore();
   }
-}
-
-/**
- * Async compatibility wrapper for hosts that already await this factory.
- */
-export async function createMemoryStoreByPolicy(
-  options?: MemoryStoreFactoryOptions,
-): Promise<MemoryStore> {
-  return createMemoryStoreByPolicySync(options);
 }
 
 function detectRuntime(): MemoryStoreRuntime {

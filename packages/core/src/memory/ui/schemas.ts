@@ -50,6 +50,30 @@ export const InteractionPayloadSchema = z.object({
 
 export type InteractionPayload = z.infer<typeof InteractionPayloadSchema>;
 
+// ─── Memory Derivation Metadata ──────────────────────────────────────────
+
+export const MemoryDerivationSourceSchema = z.enum([
+  'semantic_inference',
+  'behavior_analysis',
+]);
+export type MemoryDerivationSource = z.infer<typeof MemoryDerivationSourceSchema>;
+
+export const MemoryDerivationSeveritySchema = z.enum(['low', 'medium', 'high']);
+export type MemoryDerivationSeverity = z.infer<typeof MemoryDerivationSeveritySchema>;
+
+export const MemoryDerivationSchema = z.object({
+  source: MemoryDerivationSourceSchema,
+  findingId: z.string().optional(),
+  analyzerId: z.string().optional(),
+  confidence: z.number().min(0).max(1).optional(),
+  support: z.number().int().min(0).optional(),
+  severity: MemoryDerivationSeveritySchema.optional(),
+  scopeKey: z.string().optional(),
+  evidenceRefs: z.array(z.string()).optional(),
+});
+
+export type MemoryDerivation = z.infer<typeof MemoryDerivationSchema>;
+
 // ─── Preference Record (§5.2) ────────────────────────────────────────────
 
 export const PreferenceStatusSchema = z.enum([
@@ -74,6 +98,7 @@ export const PreferenceMemorySchema = z.object({
   firstSeenTs: z.number(),
   lastSeenTs: z.number(),
   status: PreferenceStatusSchema,
+  derivation: MemoryDerivationSchema.optional(),
 });
 
 export type PreferenceMemory = z.infer<typeof PreferenceMemorySchema>;
@@ -92,6 +117,7 @@ export const InteractionPatternSchema = z.object({
   confidence: z.number().min(0).max(1),
   support: z.number().int().min(0),
   lastSeenTs: z.number(),
+  derivation: MemoryDerivationSchema.optional(),
 });
 
 export type InteractionPattern = z.infer<typeof InteractionPatternSchema>;
@@ -124,14 +150,18 @@ export const ReflectionSchema = z.object({
   hints: z.string(),
   confidence: z.number().min(0).max(1),
   updatedTs: z.number(),
+  derivation: MemoryDerivationSchema.optional(),
 });
 
 export type Reflection = z.infer<typeof ReflectionSchema>;
 
 // ─── Processing Cursor (§5.5) ───────────────────────────────────────────
 
+export const MemoryCursorNamespaceSchema = z.enum(['ui_memory', 'ui_behavior']);
+export type MemoryCursorNamespace = z.infer<typeof MemoryCursorNamespaceSchema>;
+
 export const MemoryCursorSchema = z.object({
-  namespace: z.literal('ui_memory'),
+  namespace: MemoryCursorNamespaceSchema,
   lastProcessedEventId: z.string(),
   lastProcessedTs: z.number(),
   updatedTs: z.number(),

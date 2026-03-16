@@ -12,11 +12,14 @@ import type { AgentMessage, PromptOptions, PromptParts, UIRenderSpec } from './t
 import { ComponentCatalog } from './registry/catalog';
 import { SkillRegistry } from './registry/skills';
 import { ContextMemoryManager } from './memory/context';
-import { buildSystemPrompt, buildResponseFormatBlock } from './prompt';
+import { buildSystemPrompt, buildResponseFormatBlock, buildSelectionPrompt as buildSelectionPromptFn } from './prompt';
 import { decode } from './translator';
-import type { ModelTransport } from './transport';
-import { applyDecodedSpec } from './specLifecycle';
+import {
+  type AgentSessionRun,
+  type AgentSessionTransport,
+} from './session';
 import type { MemoryStore } from './memory/ui/store';
+import type { BehaviorStore, FindingInterpreterPolicy } from './memory/ui/behavior';
 import type { RetrievalComposer } from './memory/ui/retrieval';
 
 // ─── Types ───────────────────────────────────────────────────────────────
@@ -26,23 +29,14 @@ export interface OrchestratorConfig {
   skills: SkillRegistry;
   memory: ContextMemoryManager;
   profile?: import('./memory/profile').AdaptiveProfile;
-  transport?: ModelTransport;
+  sessionTransport?: AgentSessionTransport;
   /** Optional UI memory retrieval composer for planning priors. */
   uiMemoryStore?: MemoryStore;
   uiMemoryRetrieval?: RetrievalComposer;
+  uiBehaviorStore?: BehaviorStore;
+  uiBehaviorPolicy?: FindingInterpreterPolicy;
   /** Actor ID for UI memory retrieval. */
   actorId?: string;
-}
-
-interface TransportTurnInput {
-  userIntent: string;
-  messages: AgentMessage[];
-  promptOptions?: PromptOptions;
-  /**
-   * Apply decoded spec lifecycle (memory/profile) inside orchestrator.
-   * Keep true for standalone usage. Integrations with runtime effects can disable it.
-   */
-  applyLifecycle?: boolean;
 }
 
 // ─── Orchestrator ────────────────────────────────────────────────────────
@@ -52,9 +46,11 @@ export class DynamicOrchestrator {
   private skills: SkillRegistry;
   private memory: ContextMemoryManager;
   private profile?: import('./memory/profile').AdaptiveProfile;
-  private transport?: ModelTransport;
+  private sessionTransport?: AgentSessionTransport;
   private uiMemoryStore?: MemoryStore;
   private uiMemoryRetrieval?: RetrievalComposer;
+  private uiBehaviorStore?: BehaviorStore;
+  private uiBehaviorPolicy?: FindingInterpreterPolicy;
   private actorId?: string;
 
   constructor(config: OrchestratorConfig) {
@@ -62,9 +58,11 @@ export class DynamicOrchestrator {
     this.skills = config.skills;
     this.memory = config.memory;
     this.profile = config.profile;
-    this.transport = config.transport;
+    this.sessionTransport = config.sessionTransport;
     this.uiMemoryStore = config.uiMemoryStore;
     this.uiMemoryRetrieval = config.uiMemoryRetrieval;
+    this.uiBehaviorStore = config.uiBehaviorStore;
+    this.uiBehaviorPolicy = config.uiBehaviorPolicy;
     this.actorId = config.actorId;
   }
 
@@ -77,6 +75,7 @@ export class DynamicOrchestrator {
       skillsYaml: this.skills.toLLMSkills(),
       memoryContext: this.memory.toLLMContext(),
       responseFormatBlock: buildResponseFormatBlock(format),
+      summaryCatalogYaml: this.catalog.toLLMSummary(),
     };
   }
 
@@ -86,6 +85,14 @@ export class DynamicOrchestrator {
    */
   buildSystemPrompt(opts?: PromptOptions, uiMemoryPriors?: string): string {
     return buildSystemPrompt(this.catalog, this.skills, this.memory, this.profile, opts, uiMemoryPriors);
+  }
+
+  /**
+   * Build the lightweight Round 1 selection prompt.
+   * Returns a prompt string that asks the LLM to pick relevant components.
+   */
+  buildSelectionPrompt(userMessage: string): string {
+    return buildSelectionPromptFn(this.catalog, userMessage);
   }
 
   /**
@@ -99,77 +106,54 @@ export class DynamicOrchestrator {
     const ctx = await this.uiMemoryRetrieval.retrievePlanningContext(
       this.uiMemoryStore,
       this.actorId,
+      {
+        taskClass: this.memory.getContext().workflowContext,
+      },
+      this.uiBehaviorStore && this.uiBehaviorPolicy
+        ? {
+          store: this.uiBehaviorStore,
+          policy: this.uiBehaviorPolicy,
+        }
+        : undefined,
     );
     const formatted = this.uiMemoryRetrieval.formatForPrompt(ctx);
     return formatted || undefined;
   }
 
-  setTransport(transport?: ModelTransport): void {
-    this.transport = transport;
+  setSessionTransport(transport?: AgentSessionTransport): void {
+    this.sessionTransport = transport;
   }
 
-  hasTransport(): boolean {
-    return Boolean(this.transport);
+  hasSessionTransport(): boolean {
+    return Boolean(this.sessionTransport);
   }
 
-  async generateSpecWithTransport(input: {
+  async startAgentSession(input: {
+    sessionId?: string;
     userIntent: string;
     messages: AgentMessage[];
     promptOptions?: PromptOptions;
-    applyLifecycle?: boolean;
-  }): Promise<UIRenderSpec> {
-    const result = await this.completeTurnWithTransport(input);
-    return result.spec;
-  }
-
-  async completeTurnWithTransport(input: TransportTurnInput): Promise<{ spec: UIRenderSpec; raw: string }> {
-    if (!this.transport) {
-      throw new Error('[DynamicOrchestrator] No model transport configured.');
-    }
-
+    transport?: AgentSessionTransport;
+  }): Promise<AgentSessionRun> {
     const uiMemoryPriors = await this.getUiMemoryPriors();
+    const sessionTransport = input.transport ?? this.sessionTransport;
 
-    const result = await this.transport.complete({
+    if (!sessionTransport) {
+      throw new Error('[DynamicOrchestrator] No session transport configured.');
+    }
+
+    return sessionTransport.startSession({
+      sessionId: input.sessionId,
       systemPrompt: this.buildSystemPrompt(input.promptOptions, uiMemoryPriors),
-      messages: input.messages,
-      newUserMessage: input.userIntent,
+      userIntent: input.userIntent,
+      messages: input.messages.map((message) => ({
+        id: message.id,
+        role: message.role === 'agent' ? 'assistant' : message.role,
+        content: message.content,
+        timestamp: message.timestamp,
+      })),
+      memoryContext: this.memory.toLLMContext(),
     });
-
-    if (!result.content.trim()) {
-      throw new Error('[DynamicOrchestrator] Transport returned empty content.');
-    }
-
-    return {
-      spec: this.processLLMResponse(result.content, input.userIntent, {
-        applyLifecycle: input.applyLifecycle,
-      }),
-      raw: result.content,
-    };
-  }
-
-  /**
-   * Process raw LLM output (YAML) into a validated UIRenderSpec.
-   * Updates the memory with the new context.
-   */
-  processLLMResponse(
-    rawYaml: string,
-    userIntent: string,
-    options?: {
-      applyLifecycle?: boolean;
-    }
-  ): UIRenderSpec {
-    const spec = decode(rawYaml, this.catalog);
-    if (options?.applyLifecycle !== false) {
-      applyDecodedSpec(spec, {
-        memory: this.memory,
-        profile: this.profile,
-      }, {
-        source: 'agent',
-        userIntent,
-      });
-    }
-
-    return spec;
   }
 
   /**

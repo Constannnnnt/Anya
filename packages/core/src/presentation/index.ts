@@ -5,7 +5,7 @@ export {
   type BindingValueExpression,
   type DataNode,
   type DataNodeKind,
-  type FallbackComponentTypes,
+  type ProjectionComponentTypes,
   type LocalPatchOperation,
   type PresentationContext,
   type ContextEnvelope,
@@ -32,10 +32,10 @@ export {
 } from './types';
 
 export {
-  DEFAULT_FALLBACK_COMPONENT_TYPES,
-  buildUIFromData,
+  DEFAULT_PROJECTION_COMPONENT_TYPES,
+  buildProjectionFromContext,
   extractBindingsFromSpec,
-  type BuildUIFromDataOptions,
+  type BuildProjectionFromContextOptions,
   type PresentationProjection,
 } from './uiBuilder';
 export { planUIUpdate } from './updatePlanner';

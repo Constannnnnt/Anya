@@ -191,20 +191,6 @@ export class TriggerManager {
   }
 
   /**
-   * Kept as a no-op compatibility API; idle is no longer a trigger source.
-   */
-  checkIdle(): TriggerResult {
-    return { run: false, mode: 'async' };
-  }
-
-  /**
-   * Kept as a no-op compatibility API; periodic polling is no longer required.
-   */
-  evaluate(): TriggerResult {
-    return { run: false, mode: 'async' };
-  }
-
-  /**
    * Reset only debounce state after a successful extraction run.
    */
   reset(): void {
