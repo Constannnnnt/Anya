@@ -6,9 +6,13 @@
 
 // ─── Types ───────────────────────────────────────────────────────────────
 export type {
+  InteractionModality,
   InteractionAction,
   InteractionTrigger,
+  UIInteractionMeasurement,
+  UIInteractionMeasurementHint,
   UIInteractionRecord,
+  UIPresentedSurface,
   ActiveContext,
   ElementHistory,
   ReasoningTrace,
@@ -46,14 +50,63 @@ export {
 } from './registry/skills';
 
 // ─── Prompt ──────────────────────────────────────────────────────────────
-export { buildSystemPrompt, buildResponseFormatBlock } from './prompt';
+export { buildSystemPrompt, buildResponseFormatBlock, buildSelectionPrompt, parseSelectionResponse } from './prompt';
 
-// ─── Transport ───────────────────────────────────────────────────────────
+export {
+  agentSessionReducer,
+  collectAgentSessionEvents,
+  collectArtifactsFromSessionEvents,
+  createAgentSessionStore,
+  createInitialAgentSessionState,
+  createSessionArtifact,
+} from './session';
 export type {
-  ModelTransport,
-  ModelTransportRequest,
-  ModelTransportResponse,
-} from './transport';
+  AgentSessionController,
+  AgentSessionEvent,
+  AgentSessionMessage,
+  AgentSessionRun,
+  AgentSessionStartInput,
+  AgentSessionState,
+  AgentSessionStatus,
+  AgentSessionStore,
+  AgentSessionTransport,
+  ApprovalRequestArtifact,
+  ApprovalRequestArtifactPayload,
+  ApprovalResultArtifact,
+  ApprovalResultArtifactPayload,
+  ArtifactAudience,
+  ArtifactKind,
+  ArtifactRegion,
+  ArtifactUpsertedEvent,
+  ErrorArtifact,
+  ErrorArtifactPayload,
+  MessageArtifact,
+  MessageArtifactPayload,
+  MemoryPatchArtifact,
+  MemoryPatchArtifactPayload,
+  PlanArtifact,
+  PlanArtifactPayload,
+  PlanStep,
+  SessionArtifact,
+  SessionArtifactBase,
+  SessionCompletedEvent,
+  SessionFailedEvent,
+  SessionMessageRole,
+  SessionStartedEvent,
+  SessionStatusEvent,
+  SourceBundleArtifact,
+  SourceBundleArtifactPayload,
+  SourceRef,
+  SurfaceArtifact,
+  SurfaceArtifactPayload,
+  SurfaceDescriptor,
+  SurfaceKind,
+  TextDeltaEvent,
+  ToolCallArtifact,
+  ToolCallArtifactPayload,
+  ToolResultArtifact,
+  ToolResultArtifactPayload,
+} from './session';
 
 // ─── Logging ─────────────────────────────────────────────────────────────
 export type { Logger } from './logging';
@@ -76,7 +129,13 @@ export type {
 } from './kernel';
 
 // ─── Translator ──────────────────────────────────────────────────────────
-export { decode, encode, encodeToolResult, normalizeStyleProp } from './translator';
+export {
+  decode,
+  encode,
+  encodeToolResult,
+  findStableSpecCandidate,
+  normalizeStyleProp,
+} from './translator';
 
 // ─── Utils ───────────────────────────────────────────────────────────────
 export { applyOptimisticUpdate } from './utils';
@@ -134,6 +193,7 @@ export type {
   RuntimeEffect,
   RuntimeEffectContext,
   RuntimeEffectErrorHandler,
+  InteractionMeasuredEvent,
   RuntimeFailureBudgetExceeded,
   RuntimeFailureBudgetOptions,
   RuntimeFailureBudgetPolicy,
@@ -154,6 +214,7 @@ export type {
   RuntimeTelemetryOptions,
   RuntimeTelemetrySink,
   RuntimeStore,
+  UiPresentedEvent,
 } from './runtime';
 export {
   createRuntimeFailureBudgetEffect,
@@ -169,11 +230,11 @@ export {
   createPresentationEngine,
   planUIUpdate,
   BindingActionExecutor,
-  DEFAULT_FALLBACK_COMPONENT_TYPES,
+  DEFAULT_PROJECTION_COMPONENT_TYPES,
   executeBindingAction,
   extractBindingsFromSpec,
   planPresentation,
-  buildUIFromData,
+  buildProjectionFromContext,
   resolveBindingValue,
   setComponentProp,
   toPresentationContext,
@@ -188,11 +249,11 @@ export type {
   BindingExecutionOutcome,
   BindingExecutionRecord,
   BindingValueExpression,
-  BuildUIFromDataOptions,
+  BuildProjectionFromContextOptions,
   DataNode,
   DataNodeKind,
   ContextEnvelope,
-  FallbackComponentTypes,
+  ProjectionComponentTypes,
   LocalPatchOperation,
   PresentationContext,
   PresentationEngine,
@@ -247,3 +308,29 @@ export {
   loadThemeTokens,
   saveThemeTokens,
 } from './theme';
+
+// ─── UI Memory / Behavior ────────────────────────────────────────────────
+export type {
+  BehaviorAnalysisRunCapture,
+  BehaviorAnalyzer,
+  BehaviorAnalyzerFinding,
+  BehaviorStore,
+  FindingInterpreterPolicy,
+  CalibrationFixture,
+  CalibrationFixtureExpectation,
+  CalibrationFixtureResult,
+  CalibrationProfile,
+  CalibrationProfileResult,
+  UiBehaviorPipelineConfig,
+} from './memory/ui';
+export {
+  InMemoryBehaviorStore,
+  UiBehaviorPipeline,
+  createBehaviorFinding,
+  evaluateCalibrationProfile,
+  integrateBehaviorFindings,
+  interpretBehaviorFindings,
+  rankCalibrationProfiles,
+  CalibrationFixtureSchema,
+  CalibrationProfileSchema,
+} from './memory/ui';

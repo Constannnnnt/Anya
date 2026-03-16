@@ -238,6 +238,12 @@ const EVENT_CONTEXT_STRATEGIES: Record<string, EventContextStrategy> = {
       context.workflowContext = skill;
     }
   },
+  'ui.presented': () => {
+    // Behavior-intelligence telemetry should not flow into semantic extraction prompts by default.
+  },
+  'interaction.measured': () => {
+    // Behavior-intelligence telemetry should not flow into semantic extraction prompts by default.
+  },
 };
 
 function truncate(str: string, maxLen: number): string {
