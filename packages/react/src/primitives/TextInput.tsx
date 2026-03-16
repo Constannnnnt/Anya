@@ -1,7 +1,12 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { z } from 'zod';
 import { defineComponent } from '../defineComponent';
-import type { PrimitiveBehaviorProps, PrimitiveRenderProps } from './shared';
+import {
+    measureTextInputTarget,
+    useSyncedState,
+    type PrimitiveBehaviorProps,
+    type PrimitiveRenderProps,
+} from './shared';
 
 interface TextInputProps extends PrimitiveBehaviorProps {
     placeholder?: string;
@@ -23,9 +28,14 @@ export const TextInput = defineComponent({
     }),
     tags: ['form', 'input'],
     render: ({ id, props, onInteraction }: PrimitiveRenderProps<TextInputProps>) => {
-        const [val, setVal] = useState(props.value ?? '');
+        const [val, setVal] = useSyncedState(props.value, '');
         return (
-            <div id={id} className={`anya-text-input-wrapper ${props.className || ''}`} style={props.style}>
+            <div
+                id={id}
+                className={`anya-text-input-wrapper ${props.className || ''}`}
+                style={props.style}
+                {...props.dynamicInteractions}
+            >
                 {props.label && <label className="anya-text-input-label" htmlFor={`${id}-input`}>{props.label}</label>}
                 <input
                     id={`${id}-input`}
@@ -42,9 +52,9 @@ export const TextInput = defineComponent({
                             previousValue: val,
                             newValue: newVal,
                             semanticDescription: `User typed "${newVal}" into text input`,
+                            measurementHint: measureTextInputTarget(e.currentTarget),
                         });
                     }}
-                    {...props.dynamicInteractions}
                 />
             </div>
         );

@@ -2,6 +2,7 @@ import React from 'react';
 import { z } from 'zod';
 import { defineComponent } from '../defineComponent';
 import type { PrimitiveBehaviorProps, PrimitiveRenderProps } from './shared';
+import { renderIconToken } from './iconResolver';
 
 interface IconProps extends PrimitiveBehaviorProps {
     name: string;
@@ -11,7 +12,7 @@ interface IconProps extends PrimitiveBehaviorProps {
 
 export const Icon = defineComponent({
     name: 'Icon',
-    description: 'A named icon. Uses Material Symbols or inline emoji/unicode characters.',
+    description: 'A named icon. Uses Lucide icons or inline emoji/unicode characters.',
     propsSchema: z.object({
         name: z.string(),
         size: z.enum(['sm', 'md', 'lg']).optional(),
@@ -21,13 +22,16 @@ export const Icon = defineComponent({
     }),
     tags: ['content', 'icon'],
     render: ({ id, props }: PrimitiveRenderProps<IconProps>) => (
-        <span id={id}
-            className={`anya-icon anya-icon-${props.size ?? 'md'} material-symbols-outlined ${props.className || ''}`}
-            style={{ color: props.color, ...props.style }}
-            aria-hidden="true"
+        <span
+            id={id}
+            style={props.style}
             {...props.dynamicInteractions}
         >
-            {props.name}
+            {renderIconToken(props.name, {
+                className: props.className,
+                color: props.color,
+                size: props.size,
+            })}
         </span>
     ),
 });

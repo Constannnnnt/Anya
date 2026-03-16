@@ -20,11 +20,23 @@ export const Tooltip = defineComponent({
     tags: ['feedback', 'tooltip'],
     render: ({ id, props, children }: PrimitiveRenderProps<TooltipProps>) => {
         const [visible, setVisible] = useState(false);
+
+        const handleMouseEnter = (event: React.MouseEvent<HTMLDivElement>) => {
+            setVisible(true);
+            props.dynamicInteractions?.onMouseEnter?.(event);
+        };
+
+        const handleMouseLeave = (event: React.MouseEvent<HTMLDivElement>) => {
+            setVisible(false);
+            props.dynamicInteractions?.onMouseLeave?.(event);
+        };
+
         return (
             <div id={id} className={`anya-tooltip-wrapper ${props.className || ''}`}
                 style={{ position: 'relative', display: 'inline-block', ...props.style }}
-                onMouseEnter={() => setVisible(true)}
-                onMouseLeave={() => setVisible(false)}
+                {...props.dynamicInteractions}
+                onMouseEnter={handleMouseEnter}
+                onMouseLeave={handleMouseLeave}
                 onFocus={() => setVisible(true)}
                 onBlur={() => setVisible(false)}
             >

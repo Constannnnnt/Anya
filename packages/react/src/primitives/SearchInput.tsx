@@ -1,12 +1,18 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { z } from 'zod';
 import { defineComponent } from '../defineComponent';
-import type { PrimitiveBehaviorProps, PrimitiveRenderProps } from './shared';
+import {
+    measureTextInputTarget,
+    useSyncedState,
+    type PrimitiveBehaviorProps,
+    type PrimitiveRenderProps,
+} from './shared';
 
 interface SearchInputProps extends PrimitiveBehaviorProps {
     placeholder?: string;
     value?: string;
     label?: string;
+    disabled?: boolean;
 }
 
 export const SearchInput = defineComponent({
@@ -16,14 +22,20 @@ export const SearchInput = defineComponent({
         placeholder: z.string().optional(),
         value: z.string().optional(),
         label: z.string().optional(),
+        disabled: z.boolean().optional(),
         className: z.string().optional(),
         style: z.record(z.any()).optional(),
     }),
     tags: ['form', 'input', 'search'],
     render: ({ id, props, onInteraction }: PrimitiveRenderProps<SearchInputProps>) => {
-        const [val, setVal] = useState(props.value ?? '');
+        const [val, setVal] = useSyncedState(props.value, '');
         return (
-            <div id={id} className={`anya-search-input-wrapper ${props.className || ''}`} style={props.style}>
+            <div
+                id={id}
+                className={`anya-search-input-wrapper ${props.className || ''}`}
+                style={props.style}
+                {...props.dynamicInteractions}
+            >
                 {props.label && <label className="anya-search-label" htmlFor={`${id}-search`}>{props.label}</label>}
                 <div className="anya-search-input-container">
                     <span className="anya-search-icon" aria-hidden="true">🔍</span>
@@ -33,6 +45,7 @@ export const SearchInput = defineComponent({
                         className="anya-search-input"
                         placeholder={props.placeholder ?? 'Search…'}
                         value={val}
+                        disabled={props.disabled}
                         onChange={(e) => {
                             const newVal = e.target.value;
                             setVal(newVal);
@@ -41,6 +54,7 @@ export const SearchInput = defineComponent({
                                 previousValue: val,
                                 newValue: newVal,
                                 semanticDescription: `User searched for "${newVal}"`,
+                                measurementHint: measureTextInputTarget(e.currentTarget),
                             });
                         }}
                     />

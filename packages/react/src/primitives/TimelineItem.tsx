@@ -2,6 +2,7 @@ import React from 'react';
 import { z } from 'zod';
 import { defineComponent } from '../defineComponent';
 import { bindDrag, type PrimitiveBehaviorProps, type PrimitiveRenderProps } from './shared';
+import { renderIconToken } from './iconResolver';
 
 interface TimelineItemProps extends PrimitiveBehaviorProps { date: string; title: string; description?: string; icon?: string; }
 
@@ -19,7 +20,9 @@ export const TimelineItem = defineComponent({
     tags: ['layout', 'timeline'],
     render: ({ id, props, children, onInteraction }: PrimitiveRenderProps<TimelineItemProps>) => (
         <div id={id} className={`anya-timeline-item ${props.draggable ? 'anya-draggable' : ''} ${props.dynamicInteractions ? 'anya-interactive-container' : ''} ${props.className || ''}`} style={props.style} {...props.dynamicInteractions} {...bindDrag(id, props, onInteraction)}>
-            <div className="anya-timeline-dot">{props.icon ?? '●'}</div>
+            <div className="anya-timeline-dot">
+                {renderIconToken(props.icon ?? '●', { size: 'sm' })}
+            </div>
             <div className="anya-timeline-content">
                 <div className="anya-timeline-date">{props.date}</div>
                 <div className="anya-timeline-item-title">{props.title}</div>

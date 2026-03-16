@@ -1,7 +1,7 @@
 import React from 'react';
 import { z } from 'zod';
 import { defineComponent } from '../defineComponent';
-import { sanitizeUrl, type PrimitiveBehaviorProps, type PrimitiveRenderProps } from './shared';
+import { sanitizeNavigationUrl, type PrimitiveBehaviorProps, type PrimitiveRenderProps } from './shared';
 
 interface LinkProps extends PrimitiveBehaviorProps {
     text: string;
@@ -22,7 +22,7 @@ export const Link = defineComponent({
     tags: ['content', 'link', 'navigation'],
     render: ({ id, props }: PrimitiveRenderProps<LinkProps>) => (
         <a id={id}
-            href={sanitizeUrl(props.href)}
+            href={sanitizeNavigationUrl(props.href)}
             className={`anya-link ${props.external ? 'anya-link-external' : ''} ${props.className || ''}`}
             style={props.style}
             {...(props.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}

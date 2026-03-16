@@ -39,7 +39,7 @@ export const Table = defineComponent({
                 <tbody>
                     {(props.rows ?? []).map((row, ri) => (
                         <tr key={ri} className="anya-table-tr">
-                            {row.map((cell, ci) => (
+                            {Array.isArray(row) && row.map((cell, ci) => (
                                 <td key={ci} className="anya-table-td">{cell}</td>
                             ))}
                         </tr>

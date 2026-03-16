@@ -24,6 +24,7 @@ export const Button = defineComponent({
     tags: ['interaction', 'button'],
     render: ({ id, props }: PrimitiveRenderProps<ButtonProps>) => (
         <button id={id}
+            type="button"
             className={`anya-btn anya-btn-${props.variant ?? 'primary'} ${props.busy ? 'anya-btn-busy' : ''} ${props.className || ''}`}
             style={props.style}
             disabled={props.busy}

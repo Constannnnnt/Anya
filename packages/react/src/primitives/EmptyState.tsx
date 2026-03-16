@@ -2,6 +2,7 @@ import React from 'react';
 import { z } from 'zod';
 import { defineComponent } from '../defineComponent';
 import type { PrimitiveBehaviorProps, PrimitiveRenderProps } from './shared';
+import { renderIconToken } from './iconResolver';
 
 interface EmptyStateProps extends PrimitiveBehaviorProps {
     title: string;
@@ -22,7 +23,7 @@ export const EmptyState = defineComponent({
     tags: ['feedback', 'empty'],
     render: ({ id, props, children }: PrimitiveRenderProps<EmptyStateProps>) => (
         <div id={id} className={`anya-empty-state ${props.className || ''}`} style={props.style} {...props.dynamicInteractions}>
-            {props.icon && <div className="anya-empty-state-icon">{props.icon}</div>}
+            {props.icon && <div className="anya-empty-state-icon">{renderIconToken(props.icon, { size: 'lg' })}</div>}
             <div className="anya-empty-state-title">{props.title}</div>
             {props.description && <div className="anya-empty-state-desc">{props.description}</div>}
             {children && <div className="anya-empty-state-actions">{children}</div>}

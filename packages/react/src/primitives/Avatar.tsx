@@ -12,7 +12,7 @@ interface AvatarProps extends PrimitiveBehaviorProps {
 
 export const Avatar = defineComponent({
     name: 'Avatar',
-    description: 'A circular avatar for user/entity identity. Shows an image or initials fallback.',
+    description: 'A circular avatar for user/entity identity. Shows an image or initials when no image is available.',
     propsSchema: z.object({
         src: z.string().optional(),
         alt: z.string().optional(),

@@ -1,7 +1,12 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { z } from 'zod';
 import { defineComponent } from '../defineComponent';
-import type { PrimitiveBehaviorProps, PrimitiveRenderProps } from './shared';
+import {
+    measureSelectionTarget,
+    useSyncedState,
+    type PrimitiveBehaviorProps,
+    type PrimitiveRenderProps,
+} from './shared';
 
 interface RadioButtonProps extends PrimitiveBehaviorProps {
     options: Array<{ label: string; value: string }>;
@@ -25,10 +30,15 @@ export const RadioButton = defineComponent({
     }),
     tags: ['form', 'input', 'radio'],
     render: ({ id, props, onInteraction }: PrimitiveRenderProps<RadioButtonProps>) => {
-        const [selected, setSelected] = useState(props.value ?? '');
+        const [selected, setSelected] = useSyncedState(props.value, '');
         const groupName = props.name ?? id;
         return (
-            <fieldset id={id} className={`anya-radio-group ${props.className || ''}`} style={props.style}>
+            <fieldset
+                id={id}
+                className={`anya-radio-group ${props.className || ''}`}
+                style={props.style}
+                {...props.dynamicInteractions}
+            >
                 {props.label && <legend className="anya-radio-legend">{props.label}</legend>}
                 {(props.options ?? []).map((opt) => (
                     <label key={opt.value} className={`anya-radio-option ${selected === opt.value ? 'anya-radio-selected' : ''} ${props.disabled ? 'anya-radio-disabled' : ''}`}>
@@ -39,13 +49,14 @@ export const RadioButton = defineComponent({
                             checked={selected === opt.value}
                             disabled={props.disabled}
                             className="anya-radio-input"
-                            onChange={() => {
+                            onChange={(e) => {
                                 setSelected(opt.value);
                                 onInteraction('value_change', {
                                     propName: 'value',
                                     previousValue: selected,
                                     newValue: opt.value,
                                     semanticDescription: `User selected "${opt.label}"`,
+                                    measurementHint: measureSelectionTarget(e.currentTarget, props.options?.length),
                                 });
                             }}
                         />

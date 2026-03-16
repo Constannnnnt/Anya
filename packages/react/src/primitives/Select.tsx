@@ -1,7 +1,12 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { z } from 'zod';
 import { defineComponent } from '../defineComponent';
-import type { PrimitiveBehaviorProps, PrimitiveRenderProps } from './shared';
+import {
+    measureSelectionTarget,
+    useSyncedState,
+    type PrimitiveBehaviorProps,
+    type PrimitiveRenderProps,
+} from './shared';
 
 interface SelectProps extends PrimitiveBehaviorProps {
     options: Array<{ label: string; value: string }>;
@@ -25,9 +30,14 @@ export const Select = defineComponent({
     }),
     tags: ['form', 'input', 'select'],
     render: ({ id, props, onInteraction }: PrimitiveRenderProps<SelectProps>) => {
-        const [val, setVal] = useState(props.value ?? '');
+        const [val, setVal] = useSyncedState(props.value, '');
         return (
-            <div id={id} className={`anya-select-wrapper ${props.className || ''}`} style={props.style}>
+            <div
+                id={id}
+                className={`anya-select-wrapper ${props.className || ''}`}
+                style={props.style}
+                {...props.dynamicInteractions}
+            >
                 {props.label && <label className="anya-select-label" htmlFor={`${id}-select`}>{props.label}</label>}
                 <select
                     id={`${id}-select`}
@@ -42,6 +52,7 @@ export const Select = defineComponent({
                             previousValue: val,
                             newValue: newVal,
                             semanticDescription: `User selected "${newVal}"`,
+                            measurementHint: measureSelectionTarget(e.currentTarget, props.options?.length),
                         });
                     }}
                 >

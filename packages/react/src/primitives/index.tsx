@@ -15,6 +15,8 @@
  * Feedback:     Alert, Spinner, Skeleton, ProgressBar, Tooltip, EmptyState
  * Navigation:   Breadcrumbs, Stepper
  * Data:         Table
+ * Charts:       BarChart, LineChart, PieChart
+ * Diagrams:     Diagram, MermaidDiagram
  */
 
 // ─── Shared ──────────────────────────────────────────────────────────────
@@ -79,6 +81,9 @@ export { Stepper } from './Stepper';
 // ─── Data ────────────────────────────────────────────────────────────────
 export { Table } from './Table';
 
+// ─── Charts & Diagrams ──────────────────────────────────────────────────
+export { BarChart, LineChart, PieChart, Diagram, MermaidDiagram } from './charts';
+
 // ─── Registry ────────────────────────────────────────────────────────────
 import { Container } from './Container';
 import { FlexRow } from './FlexRow';
@@ -124,6 +129,7 @@ import { EmptyState } from './EmptyState';
 import { Breadcrumbs } from './Breadcrumbs';
 import { Stepper } from './Stepper';
 import { Table } from './Table';
+import { BarChart, LineChart, PieChart, Diagram, MermaidDiagram } from './charts';
 
 /** All built-in primitives as an array — pass to AnyaProvider.components */
 export const builtInPrimitives = [
@@ -142,4 +148,6 @@ export const builtInPrimitives = [
     Breadcrumbs, Stepper,
     // Data
     Table,
+    // Charts & Diagrams
+    BarChart, LineChart, PieChart, Diagram, MermaidDiagram,
 ];

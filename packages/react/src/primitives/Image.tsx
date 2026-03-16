@@ -1,14 +1,17 @@
 import React from 'react';
 import { z } from 'zod';
 import { defineComponent } from '../defineComponent';
-import { sanitizeUrl, type PrimitiveBehaviorProps, type PrimitiveRenderProps } from './shared';
+import {
+    resolveRenderableMediaUrl,
+    type PrimitiveBehaviorProps,
+    type PrimitiveRenderProps,
+} from './shared';
 
 interface ImageProps extends PrimitiveBehaviorProps {
     src: string;
     alt?: string;
     width?: string;
     height?: string;
-    crossOrigin?: 'anonymous' | 'use-credentials';
 }
 
 export const Image = defineComponent({
@@ -19,16 +22,19 @@ export const Image = defineComponent({
         alt: z.string().optional(),
         width: z.string().optional(),
         height: z.string().optional(),
-        crossOrigin: z.enum(['anonymous', 'use-credentials']).optional(),
         className: z.string().optional(),
         style: z.record(z.any()).optional(),
     }),
     tags: ['media', 'image'],
     render: ({ id, props }: PrimitiveRenderProps<ImageProps>) => (
-        <img id={id} src={sanitizeUrl(props.src)} alt={props.alt}
+        <img
+            id={id}
+            src={resolveRenderableMediaUrl(props.src) ?? 'about:blank'}
+            alt={props.alt}
             width={props.width}
             height={props.height}
-            crossOrigin={props.crossOrigin}
+            loading="lazy"
+            decoding="async"
             className={`anya-img ${props.className || ''}`}
             style={props.style}
             {...props.dynamicInteractions}

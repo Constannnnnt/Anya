@@ -32,13 +32,32 @@ export const Skeleton = defineComponent({
                 {Array.from({ length: lines }, (_, i) => (
                     <div key={i}
                         className={`anya-skeleton anya-skeleton-${variant}`}
-                        style={{
-                            width: variant === 'circular' ? (props.width ?? '40px') : (i === lines - 1 && variant === 'text' ? '60%' : (props.width ?? '100%')),
-                            height: variant === 'circular' ? (props.width ?? '40px') : (props.height ?? (variant === 'text' ? '1em' : '120px')),
-                        }}
+                        style={getSkeletonStyle(variant, props, i, lines)}
                     />
                 ))}
             </div>
         );
     },
 });
+
+function getSkeletonStyle(
+    variant: NonNullable<SkeletonProps['variant']>,
+    props: SkeletonProps,
+    index: number,
+    lineCount: number,
+): React.CSSProperties {
+    if (variant === 'circular') {
+        const size = props.width ?? '40px';
+        return {
+            width: size,
+            height: size,
+        };
+    }
+
+    const isLastTextLine = variant === 'text' && index === lineCount - 1;
+
+    return {
+        width: isLastTextLine ? '60%' : (props.width ?? '100%'),
+        height: props.height ?? (variant === 'text' ? '1em' : '120px'),
+    };
+}

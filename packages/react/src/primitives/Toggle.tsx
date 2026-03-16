@@ -1,7 +1,12 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { z } from 'zod';
 import { defineComponent } from '../defineComponent';
-import type { PrimitiveBehaviorProps, PrimitiveRenderProps } from './shared';
+import {
+    measurePointerInteraction,
+    useSyncedState,
+    type PrimitiveBehaviorProps,
+    type PrimitiveRenderProps,
+} from './shared';
 
 interface ToggleProps extends PrimitiveBehaviorProps {
     label?: string;
@@ -21,16 +26,21 @@ export const Toggle = defineComponent({
     }),
     tags: ['form', 'input', 'toggle'],
     render: ({ id, props, onInteraction }: PrimitiveRenderProps<ToggleProps>) => {
-        const [isOn, setIsOn] = useState(!!props.checked);
+        const [isOn, setIsOn] = useSyncedState(props.checked, false);
         return (
-            <label id={id} className={`anya-toggle ${isOn ? 'anya-toggle-on' : ''} ${props.disabled ? 'anya-toggle-disabled' : ''} ${props.className || ''}`} style={props.style}>
+            <label
+                id={id}
+                className={`anya-toggle ${isOn ? 'anya-toggle-on' : ''} ${props.disabled ? 'anya-toggle-disabled' : ''} ${props.className || ''}`}
+                style={props.style}
+                {...props.dynamicInteractions}
+            >
                 <button
                     type="button"
                     role="switch"
                     aria-checked={isOn}
                     className="anya-toggle-track"
                     disabled={props.disabled}
-                    onClick={() => {
+                    onClick={(e) => {
                         const next = !isOn;
                         setIsOn(next);
                         onInteraction('value_change', {
@@ -38,6 +48,7 @@ export const Toggle = defineComponent({
                             previousValue: isOn,
                             newValue: next,
                             semanticDescription: `User toggled "${props.label ?? 'switch'}" ${next ? 'on' : 'off'}`,
+                            measurementHint: measurePointerInteraction(e, { choiceSetSize: 2 }),
                         });
                     }}
                 >

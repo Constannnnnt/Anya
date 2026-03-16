@@ -1,12 +1,21 @@
 import React from 'react';
 import { z } from 'zod';
 import { defineComponent } from '../defineComponent';
-import { bindDrag, type PrimitiveBehaviorProps, type PrimitiveRenderProps } from './shared';
+import {
+    bindDrag,
+    resolveFlexAlign,
+    resolveFlexJustify,
+    toCssLength,
+    type FlexAlign,
+    type FlexJustify,
+    type PrimitiveBehaviorProps,
+    type PrimitiveRenderProps,
+} from './shared';
 
 interface FlexProps extends PrimitiveBehaviorProps {
     gap?: number | string;
-    align?: 'start' | 'center' | 'end' | 'stretch';
-    justify?: 'start' | 'center' | 'end' | 'between' | 'around';
+    align?: FlexAlign;
+    justify?: FlexJustify;
 }
 
 export const FlexRow = defineComponent({
@@ -28,9 +37,9 @@ export const FlexRow = defineComponent({
                 flexDirection: 'row',
                 flexWrap: 'wrap',
                 width: '100%',
-                gap: typeof props.gap === 'number' ? `${props.gap}px` : props.gap,
-                alignItems: props.align === 'start' ? 'flex-start' : props.align === 'end' ? 'flex-end' : props.align,
-                justifyContent: props.justify === 'start' ? 'flex-start' : props.justify === 'end' ? 'flex-end' : props.justify === 'between' ? 'space-between' : props.justify === 'around' ? 'space-around' : props.justify,
+                gap: toCssLength(props.gap),
+                alignItems: resolveFlexAlign(props.align),
+                justifyContent: resolveFlexJustify(props.justify),
                 ...props.style,
             }}
             {...props.dynamicInteractions}

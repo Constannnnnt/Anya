@@ -23,7 +23,7 @@ export const Heading = defineComponent({
     ],
     render: ({ id, props }: PrimitiveRenderProps<HeadingProps>) => {
         const level = props.level ?? 2;
-        const Tag = level === 1 ? 'h1' : level === 2 ? 'h2' : level === 3 ? 'h3' : 'h4';
+        const Tag = getHeadingTag(level);
         return React.createElement(Tag, {
             id,
             className: `anya-heading anya-heading-${level} ${props.dynamicInteractions ? 'anya-interactive' : ''} ${props.className || ''}`,
@@ -32,3 +32,16 @@ export const Heading = defineComponent({
         }, props.text);
     },
 });
+
+function getHeadingTag(level: number): 'h1' | 'h2' | 'h3' | 'h4' {
+    switch (level) {
+        case 1:
+            return 'h1';
+        case 2:
+            return 'h2';
+        case 3:
+            return 'h3';
+        default:
+            return 'h4';
+    }
+}
