@@ -254,7 +254,7 @@ export class ContextMemoryManager {
   private componentToMarkdown(comp: UIComponentSpec, indent: string): string {
     const propSummary = Object.entries(comp.props)
       .filter(([, v]) => v !== undefined && v !== null)
-      .map(([k, v]) => `${k}=${typeof v === 'string' ? `"${v}"` : JSON.stringify(v)}`)
+      .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
       .join(', ');
     const lines = [`${indent}- ${comp.type}(${propSummary}) [id=${comp.id}]`];
     if (comp.children) {
@@ -264,6 +264,7 @@ export class ContextMemoryManager {
     }
     return lines.join('\n');
   }
+
 
   // ── Persistence ──
 
