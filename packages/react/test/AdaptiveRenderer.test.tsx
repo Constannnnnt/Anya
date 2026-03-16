@@ -40,7 +40,7 @@ describe('AdaptiveRenderer', () => {
         expect(container.firstChild).toBeNull();
     });
 
-    it('renders a fallback for unknown components', () => {
+    it('renders the unknown-component renderer for unknown components', () => {
         const spec: UIRenderSpec = {
             layout: 'stack',
             components: [
@@ -49,7 +49,7 @@ describe('AdaptiveRenderer', () => {
         };
 
         render(<AdaptiveRenderer spec={spec} registry={{}} />);
-        expect(screen.getByText('Unknown component:')).toBeInTheDocument();
+        expect(screen.getByText('Unknown component:')).toBeTruthy();
     });
 
     it('recursively renders actual components from a manual registry', () => {
@@ -73,10 +73,10 @@ describe('AdaptiveRenderer', () => {
 
         render(<AdaptiveRenderer spec={spec} registry={mockRegistry} />);
 
-        expect(screen.getByTestId('parent')).toBeInTheDocument();
-        expect(screen.getByTestId('child')).toBeInTheDocument();
-        expect(screen.getByText('Parent Box')).toBeInTheDocument();
-        expect(screen.getByText('Child Box')).toBeInTheDocument();
+        expect(screen.getByTestId('parent')).toBeTruthy();
+        expect(screen.getByTestId('child')).toBeTruthy();
+        expect(screen.getByText('Parent Box')).toBeTruthy();
+        expect(screen.getByText('Child Box')).toBeTruthy();
     });
 
     it('applies row and split root layout styles', () => {
@@ -127,7 +127,7 @@ describe('AdaptiveRenderer', () => {
             elementId: 'target',
             action: 'custom',
             semanticDescription: 'Clicked'
-        }));
+        }), undefined);
     });
 
     it('wires up dynamic interactions attached by the agent', () => {
@@ -156,8 +156,8 @@ describe('AdaptiveRenderer', () => {
         );
 
         const dynamicButton = screen.getByTestId('dyn-dyn-target');
-        fireEvent.click(dynamicButton);
-        expect(screen.getByTestId('dyn-target')).toHaveAttribute('data-bindto', 'label-1');
+        fireEvent.click(dynamicButton, { detail: 1, clientX: 40, clientY: 20 });
+        expect(screen.getByTestId('dyn-target').getAttribute('data-bindto')).toBe('label-1');
 
         expect(onInteractionSpy).toHaveBeenCalledWith('TestBox', expect.objectContaining({
             elementId: 'dyn-target',
@@ -166,6 +166,10 @@ describe('AdaptiveRenderer', () => {
             semanticDescription: 'Dynamically clicked',
             targetIds: ['some-video'],
             targetAction: 'play'
+        }), expect.objectContaining({
+            modality: 'pointer',
+            targetWidthPx: 0,
+            targetHeightPx: 0,
         }));
     });
 

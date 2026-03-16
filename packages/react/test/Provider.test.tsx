@@ -3,10 +3,12 @@ import { render, renderHook, act } from '@testing-library/react';
 import React from 'react';
 import { AnyaProvider, useAnyaContext } from '../src/Provider';
 import {
+  createBehaviorFinding,
   createRuntimeEvent,
   getLogger,
   setLogger,
   silentLogger,
+  type BehaviorAnalyzer,
   type FileStorage,
   type Logger,
 } from '@anya-ui/core';
@@ -138,6 +140,115 @@ describe('AnyaProvider & useAnyaContext', () => {
         expect(onFailureBudgetSignal).toHaveBeenCalledWith(expect.objectContaining({
             kind: 'runtime.failure_budget.exceeded',
             policyName: 'provider_decode_slo',
+        }));
+    });
+
+    it('emits behavior analysis captures through the provider hook', async () => {
+        const onBehaviorAnalysisRun = vi.fn();
+        const behaviorAnalyzer: BehaviorAnalyzer = {
+            id: 'provider_behavior_reflection',
+            dependencies: ['aggregates'],
+            cadence: 'rollup',
+            minInteractions: 1,
+            run: async ({ actorId, now }) => ({
+                findings: [
+                    createBehaviorFinding({
+                        actorId,
+                        analyzerId: 'provider_behavior_reflection',
+                        kind: 'reflection_candidate',
+                        conceptKey: 'provider-reflection:compare',
+                        scopeKey: 'context:compare',
+                        confidence: 0.95,
+                        support: 1,
+                        evidenceRefs: ['agg-1'],
+                        payload: {
+                            title: 'Provider Behavior Reflection',
+                            hints: 'Observed compare behavior.',
+                            useCases: 'Compare contexts.',
+                        },
+                        createdTs: now,
+                    }),
+                ],
+            }),
+        };
+
+        const wrapper = ({ children }: { children: React.ReactNode }) => (
+            <AnyaProvider
+                components={mockComponents}
+                onBehaviorAnalysisRun={onBehaviorAnalysisRun}
+                uiMemory={{
+                    enabled: true,
+                    actorId: 'actor-provider',
+                    triggerConfig: { debounceMs: 0 },
+                    behavior: {
+                        enabled: true,
+                        analyzers: [behaviorAnalyzer],
+                        interpreterPolicy: {
+                            mode: 'calibration_required',
+                            allowResolvedMemoryPromotion: true,
+                            diagnosticConfidenceMin: 0.5,
+                            localAdaptationConfidenceMin: 0.75,
+                            localAdaptationSeverityMin: 'high',
+                            allowedKindsByAnalyzer: {
+                                provider_behavior_reflection: ['reflection_candidate'],
+                            },
+                            promotionRules: {
+                                reflection_candidate: { confidenceMin: 0.7, supportMin: 1 },
+                            },
+                        },
+                        captureSnapshots: true,
+                    },
+                }}
+            >
+                {children}
+            </AnyaProvider>
+        );
+
+        const { result } = renderHook(() => useAnyaContext(), { wrapper });
+
+        await flushEffects();
+
+        act(() => {
+            result.current.runtime.dispatch(createRuntimeEvent('ui.presented', {
+                surface: {
+                    uiId: 'ui-provider',
+                    surfaceHash: 'ui-provider',
+                    layout: 'split',
+                    workflowContext: 'analysis',
+                    componentCount: 2,
+                    interactiveCount: 1,
+                    actionableCount: 1,
+                    componentFamilies: ['input', 'layout'],
+                    actionFamilies: ['activate'],
+                },
+            }, { source: 'system' }));
+            result.current.runtime.dispatch(createRuntimeEvent('interaction.measured', {
+                interactionEventId: 'evt-provider',
+                elementId: 'btn-1',
+                componentName: 'Button',
+                action: 'submit',
+                measurement: {
+                    modality: 'pointer',
+                    componentFamily: 'action',
+                    actionFamily: 'activate',
+                    choiceSetSize: 6,
+                },
+            }, { source: 'user' }));
+            result.current.runtime.dispatch(createRuntimeEvent('session.status_set', { status: 'thinking' }, { source: 'system' }));
+            result.current.runtime.dispatch(createRuntimeEvent('session.status_set', { status: 'idle' }, { source: 'system' }));
+        });
+
+        await flushEffects();
+        await flushEffects();
+
+        expect(onBehaviorAnalysisRun).toHaveBeenCalledWith(expect.objectContaining({
+            actorId: 'actor-provider',
+            integration: expect.objectContaining({
+                promotedReflections: 1,
+            }),
+            behaviorSnapshot: expect.objectContaining({
+                signals: expect.any(Array),
+            }),
         }));
     });
 

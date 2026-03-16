@@ -5,7 +5,14 @@ import { z } from 'zod';
 import { AnyaProvider } from '../src/Provider';
 import { useAnyaUI } from '../src/hooks/useAnyaUI';
 import type { AnyaComponent } from '../src/defineComponent';
-import type { ModelTransport, PresentationPlan } from '@anya-ui/core';
+import {
+  collectAgentSessionEvents,
+  collectArtifactsFromSessionEvents,
+} from '@anya-ui/core';
+import type {
+  AgentSessionTransport,
+  PresentationPlan,
+} from '@anya-ui/core';
 
 const mockComponents: AnyaComponent[] = [
   {
@@ -92,25 +99,182 @@ describe('useAnyaUI runtime integration', () => {
     expect(result.current.context.memory.getContext().userIntent).toBe('Introduce Sara Hooker');
   });
 
-  it('runs an orchestrated agent turn with transport and updates runtime spec', async () => {
+  it('emits ui.presented and interaction.measured with safe derived telemetry', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <AnyaProvider components={mockComponents}>
         {children}
       </AnyaProvider>
     );
 
-    const transport: ModelTransport = {
-      async complete() {
+    const { result } = renderHook(() => useAnyaUI(), { wrapper });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const presentedEvents: Array<{
+      uiId: string;
+      componentCount: number;
+      interactiveCount: number;
+      actionableCount: number;
+      componentFamilies: string[];
+      actionFamilies: string[];
+    }> = [];
+    const measuredEvents: Array<{
+      interactionEventId: string;
+      elementId: string;
+      componentName: string;
+      action: string;
+      measurement: Record<string, unknown>;
+    }> = [];
+
+    const unsubscribePresented = result.current.subscribeRuntimeEvents('ui.presented', (event) => {
+      if (event.type === 'ui.presented') {
+        presentedEvents.push(event.payload.surface);
+      }
+    });
+    const unsubscribeMeasured = result.current.subscribeRuntimeEvents('interaction.measured', (event) => {
+      if (event.type === 'interaction.measured') {
+        measuredEvents.push(event.payload);
+      }
+    });
+
+    act(() => {
+      result.current.publishSpec({
+        layout: 'stack',
+        components: [
+          {
+            id: 'cta',
+            type: 'Heading',
+            props: { text: 'Call to action' },
+            interactions: [
+              {
+                trigger: 'onClick',
+                action: 'submit',
+                description: 'Submit the form',
+              },
+            ],
+          },
+        ],
+      });
+      result.current.recordInteraction({
+        timestamp: 1,
+        elementId: 'input-1',
+        componentName: 'TextInput',
+        action: 'change',
+        propName: 'value',
+        previousValue: 'old',
+        newValue: 'new secret',
+        semanticDescription: 'User updated text input',
+      }, {
+        modality: 'keyboard',
+        targetWidthPx: 240,
+        targetHeightPx: 44,
+      });
+    });
+
+    unsubscribePresented();
+    unsubscribeMeasured();
+
+    expect(presentedEvents).toHaveLength(1);
+    expect(presentedEvents[0]).toMatchObject({
+      componentCount: 1,
+      interactiveCount: 1,
+      actionableCount: 1,
+      componentFamilies: ['text'],
+      actionFamilies: ['activate'],
+    });
+    expect(presentedEvents[0].uiId).toMatch(/^ui-/);
+
+    expect(measuredEvents).toHaveLength(1);
+    expect(measuredEvents[0]).toMatchObject({
+      elementId: 'input-1',
+      componentName: 'TextInput',
+      action: 'change',
+    });
+    expect(measuredEvents[0].measurement).toMatchObject({
+      modality: 'keyboard',
+      componentFamily: 'input',
+      componentRole: 'textbox',
+      actionFamily: 'input',
+      targetWidthPx: 240,
+      targetHeightPx: 44,
+      valueLength: 10,
+      deltaLength: 7,
+    });
+    expect(measuredEvents[0].measurement).not.toHaveProperty('newValue');
+    expect(measuredEvents[0].measurement).not.toHaveProperty('previousValue');
+
+    const storedInteraction = result.current.context.memory.getRecentInteractions(1)[0];
+    expect(storedInteraction).toMatchObject({
+      elementId: 'input-1',
+      componentName: 'TextInput',
+      action: 'change',
+      semanticDescription: 'User updated text input.',
+    });
+    expect(storedInteraction.previousValue).toBeUndefined();
+    expect(storedInteraction.newValue).toBeUndefined();
+  });
+
+  it('starts an agent session and applies the emitted surface to runtime state', async () => {
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <AnyaProvider components={mockComponents}>
+        {children}
+      </AnyaProvider>
+    );
+
+    const transport: AgentSessionTransport = {
+      async startSession(input) {
+        const sessionId = input.sessionId ?? 'session-runtime';
         return {
-          content: [
-            'spec_version: 1',
-            'layout: stack',
-            'components:',
-            '  - id: h-transport',
-            '    type: Heading',
-            '    props:',
-            '      text: "Transport Heading"',
-          ].join('\n'),
+          sessionId,
+          controller: { cancel() {} },
+          events: (async function* () {
+            yield {
+              type: 'session.started' as const,
+              sessionId,
+              timestamp: 1,
+            };
+            yield {
+              type: 'artifact.upserted' as const,
+              sessionId,
+              timestamp: 2,
+              artifact: {
+                id: 'artifact-surface',
+                sessionId,
+                kind: 'surface' as const,
+                version: 1,
+                createdAt: 2,
+                audience: 'user' as const,
+                region: 'main' as const,
+                payload: {
+                  surface: {
+                    surfaceKind: 'ui_spec' as const,
+                    surfaceId: 'surface-main',
+                    schema: {
+                      type: 'anya.ui_spec' as const,
+                      spec: {
+                        spec_version: 1,
+                        layout: 'stack' as const,
+                        components: [
+                          {
+                            id: 'h-transport',
+                            type: 'Heading',
+                            props: { text: 'Transport Heading' },
+                          },
+                        ],
+                      },
+                    },
+                  },
+                },
+              },
+            };
+            yield {
+              type: 'session.completed' as const,
+              sessionId,
+              timestamp: 3,
+            };
+          })(),
         };
       },
     };
@@ -118,11 +282,22 @@ describe('useAnyaUI runtime integration', () => {
     const { result } = renderHook(() => useAnyaUI(), { wrapper });
 
     await act(async () => {
-      await result.current.runAgentTurn({
+      const run = await result.current.startAgentSession({
         userIntent: 'Build heading',
         messages: [],
         transport,
       });
+      const artifacts = collectArtifactsFromSessionEvents(await collectAgentSessionEvents(run));
+      const surface = artifacts.find(
+        (artifact) => artifact.kind === 'surface'
+          && artifact.payload.surface.schema.type === 'anya.ui_spec',
+      );
+
+      if (!surface || surface.kind !== 'surface' || surface.payload.surface.schema.type !== 'anya.ui_spec') {
+        throw new Error('Expected a primary anya.ui_spec surface artifact.');
+      }
+
+      result.current.publishSpec(surface.payload.surface.schema.spec);
     });
 
     expect(result.current.runtimeState.ui.spec?.components[0].id).toBe('h-transport');
