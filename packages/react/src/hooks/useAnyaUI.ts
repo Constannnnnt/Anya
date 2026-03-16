@@ -1,24 +1,25 @@
 /**
  * @anya-ui/react — useAnyaUI Hook
  *
- * The primary hook for agent-agnostic UI generation.
- * Provides: prompt builder, decoder, encoder, dynamic registration.
+ * Primary hook for session-oriented UI generation.
+ * Provides prompt helpers, typed session startup, and runtime/presentation control.
  *
- * Your agent calls buildSystemPrompt(), sends it to YOUR LLM,
- * gets back YAML, and passes it to decode(). That's it.
+ * Hosts can either start a typed agent session or manually decode
+ * `anya.ui_spec` surface payloads when needed.
  */
 
-import { useCallback, useSyncExternalStore } from 'react';
+import { useCallback, useRef, useSyncExternalStore } from 'react';
 import { useAnyaContext, type AnyaContextValue } from '../Provider';
 import type {
   AgentMessage,
+  AgentSessionRun,
+  AgentSessionTransport,
   AgentState,
   BindingAction,
   BindingActionHandler,
   BindingExecutionRecord,
   DataNode,
   IntentUpdateMode,
-  ModelTransport,
   PresentationContext,
   PresentationPlan,
   PresentationPlannerStrategyName,
@@ -34,6 +35,7 @@ import type {
   ToolHandler,
   ToolManifest,
   UIBinding,
+  UIInteractionMeasurementHint,
   UIRenderSpec,
   UIInteractionRecord,
 } from '@anya-ui/core';
@@ -45,12 +47,24 @@ import {
   extractBindingsFromSpec as coreExtractBindingsFromSpec,
 } from '@anya-ui/core';
 import type { AnyaComponent } from '../defineComponent';
+import {
+  buildPresentedSurface,
+  DEFAULT_BEHAVIOR_TELEMETRY_POLICY,
+  deriveInteractionMeasurement,
+  sanitizeInteractionRecordForTelemetry,
+} from '../behavior/telemetry';
+import {
+  createInteractionMeasurementTracker,
+  type InteractionMeasurementTracker,
+} from '../behavior/interactionTracker';
 
 // ─── Return Type ─────────────────────────────────────────────────────────
 
 export interface UseAnyaUI {
   /** Build the system prompt */
   buildSystemPrompt: (opts?: PromptOptions) => string;
+  /** Build the lightweight Round 1 selection prompt for progressive disclosure */
+  buildSelectionPrompt: (userMessage: string) => string;
   getPromptParts: () => PromptParts;
   /** Decode LLM YAML → UIRenderSpec */
   decode: (raw: string) => UIRenderSpec;
@@ -59,7 +73,10 @@ export interface UseAnyaUI {
   /** Publish decoded spec into the runtime/state pipeline */
   publishSpec: (spec: UIRenderSpec) => void;
   /** Record a user interaction through runtime dispatch */
-  recordInteraction: (interaction: UIInteractionRecord) => void;
+  recordInteraction: (
+    interaction: UIInteractionRecord,
+    measurementHint?: UIInteractionMeasurementHint,
+  ) => void;
   /** Update active intent through runtime dispatch */
   setUserIntent: (intent: string, mode?: IntentUpdateMode) => void;
   /** Update agent status through runtime dispatch */
@@ -109,16 +126,20 @@ export interface UseAnyaUI {
   /** Execute bindings for an interaction without runtime event dispatch */
   executePresentationInteraction: (interaction: UIInteractionRecord) => Promise<BindingExecutionRecord[]>;
   /** Record runtime interaction and execute matching bindings */
-  handleUserInteraction: (interaction: UIInteractionRecord) => Promise<BindingExecutionRecord[]>;
+  handleUserInteraction: (
+    interaction: UIInteractionRecord,
+    measurementHint?: UIInteractionMeasurementHint,
+  ) => Promise<BindingExecutionRecord[]>;
   /** Current active bindings */
   getBindings: () => UIBinding[];
-  /** Run one agent turn through configured (or provided) model transport */
-  runAgentTurn: (input: {
+  /** Start an artifact-oriented agent session stream */
+  startAgentSession: (input: {
+    sessionId?: string;
     userIntent: string;
     messages: AgentMessage[];
     promptOptions?: PromptOptions;
-    transport?: ModelTransport;
-  }) => Promise<{ spec: UIRenderSpec; raw: string }>;
+    transport?: AgentSessionTransport;
+  }) => Promise<AgentSessionRun>;
   /** Subscribe-ready runtime state snapshot */
   runtimeState: RuntimeState;
   /** Get the anya.md adaptive profile content */
@@ -134,6 +155,41 @@ export interface UseAnyaUI {
 interface PlannedToolCall {
   toolId: string;
   bindingId: string;
+}
+
+function createToolCallKey(bindingId: string, toolId: string): string {
+  return `${bindingId}::${toolId}`;
+}
+
+function getCurrentSpec(ctx: AnyaContextValue): UIRenderSpec | null {
+  return ctx.presentation.getState().currentSpec ?? ctx.memory.getCurrentSpec();
+}
+
+function prepareInteractionTelemetry(
+  ctx: AnyaContextValue,
+  interaction: UIInteractionRecord,
+  tracker: InteractionMeasurementTracker,
+  measurementHint?: UIInteractionMeasurementHint,
+): {
+  measurement: ReturnType<typeof deriveInteractionMeasurement>;
+  persistedInteraction: UIInteractionRecord;
+} {
+  const baseMeasurement = deriveInteractionMeasurement(
+    interaction,
+    getCurrentSpec(ctx),
+    measurementHint,
+    DEFAULT_BEHAVIOR_TELEMETRY_POLICY,
+  );
+  const measurement = tracker.enrich(interaction, baseMeasurement, measurementHint);
+
+  return {
+    measurement,
+    persistedInteraction: sanitizeInteractionRecordForTelemetry(
+      interaction,
+      measurement,
+      DEFAULT_BEHAVIOR_TELEMETRY_POLICY,
+    ),
+  };
 }
 
 function doesBindingMatchInteraction(
@@ -180,7 +236,7 @@ function collectPlannedToolCalls(
   const seen = new Set<string>();
   const deduped: PlannedToolCall[] = [];
   for (const item of planned) {
-    const key = `${item.bindingId}::${item.toolId}`;
+    const key = createToolCallKey(item.bindingId, item.toolId);
     if (seen.has(key)) continue;
     seen.add(key);
     deduped.push(item);
@@ -197,6 +253,7 @@ function collectPlannedToolCalls(
  */
 export function useAnyaUI(): UseAnyaUI {
   const ctx = useAnyaContext();
+  const measurementTrackerRef = useRef(createInteractionMeasurementTracker());
   const runtimeState = useSyncExternalStore(
     ctx.runtime.subscribe,
     ctx.runtime.getState,
@@ -214,9 +271,9 @@ export function useAnyaUI(): UseAnyaUI {
   );
 
   const reportDecodeFailure = useCallback(
-    (error: unknown, fallbackMessage: string) => {
+    (error: unknown, defaultMessage: string) => {
       dispatchRuntimeEvent(createRuntimeEvent('spec.decode_failed', {
-        error: error instanceof Error ? error.message : fallbackMessage,
+        error: error instanceof Error ? error.message : defaultMessage,
       }, { source: 'agent' }));
     },
     [dispatchRuntimeEvent]
@@ -258,6 +315,11 @@ export function useAnyaUI(): UseAnyaUI {
 
   const getPromptParts = useCallback(
     () => ctx.orchestrator.getPromptParts(),
+    [ctx.orchestrator]
+  );
+
+  const buildSelectionPrompt = useCallback(
+    (userMessage: string) => ctx.orchestrator.buildSelectionPrompt(userMessage),
     [ctx.orchestrator]
   );
 
@@ -342,7 +404,14 @@ export function useAnyaUI(): UseAnyaUI {
 
   const publishSpec = useCallback(
     (spec: UIRenderSpec, source: 'agent' | 'system' = 'agent') => {
-      dispatchRuntimeEvent(createRuntimeEvent('spec.decoded', { spec }, { source }));
+      const specEvent = createRuntimeEvent('spec.decoded', { spec }, { source });
+      dispatchRuntimeEvent(specEvent);
+      dispatchRuntimeEvent(createRuntimeEvent('ui.presented', {
+        surface: buildPresentedSurface(spec),
+      }, {
+        source,
+        causationId: specEvent.id,
+      }));
       if (spec.theme_update && Object.keys(spec.theme_update).length > 0) {
         dispatchRuntimeEvent(createRuntimeEvent('theme.updated', {
           tokens: spec.theme_update,
@@ -404,28 +473,52 @@ export function useAnyaUI(): UseAnyaUI {
   );
 
   const recordInteraction = useCallback(
-    (interaction: UIInteractionRecord) => {
-      dispatchRuntimeEvent(createRuntimeEvent('interaction.recorded', {
-        record: interaction,
-      }, { source: 'user' }));
+    (
+      interaction: UIInteractionRecord,
+      measurementHint?: UIInteractionMeasurementHint,
+    ) => {
+      const {
+        measurement,
+        persistedInteraction,
+      } = prepareInteractionTelemetry(
+        ctx,
+        interaction,
+        measurementTrackerRef.current,
+        measurementHint,
+      );
+      const interactionEvent = createRuntimeEvent('interaction.recorded', {
+        record: persistedInteraction,
+      }, { source: 'user' });
+      dispatchRuntimeEvent(interactionEvent);
+      dispatchRuntimeEvent(createRuntimeEvent('interaction.measured', {
+        interactionEventId: interactionEvent.id,
+        elementId: interaction.elementId,
+        componentName: interaction.componentName,
+        action: interaction.action,
+        measurement,
+      }, {
+        source: 'user',
+        causationId: interactionEvent.id,
+      }));
     },
-    [dispatchRuntimeEvent]
+    [ctx.memory, ctx.presentation, dispatchRuntimeEvent]
   );
 
   const handleUserInteraction = useCallback(
-    async (interaction: UIInteractionRecord) => {
-      const toPlannedKey = (planned: PlannedToolCall) => `${planned.bindingId}::${planned.toolId}`;
-      const toRecordKey = (record: BindingExecutionRecord) => `${record.bindingId}::${record.toolId ?? ''}`;
+    async (
+      interaction: UIInteractionRecord,
+      measurementHint?: UIInteractionMeasurementHint,
+    ) => {
       const plannedToolCalls = collectPlannedToolCalls(
         ctx.presentation.getState().bindings,
         interaction,
       );
       const pendingToolCalls = new Map<string, PlannedToolCall>();
       for (const planned of plannedToolCalls) {
-        pendingToolCalls.set(toPlannedKey(planned), planned);
+        pendingToolCalls.set(createToolCallKey(planned.bindingId, planned.toolId), planned);
       }
       const previousSpec = ctx.presentation.getState().currentSpec;
-      recordInteraction(interaction);
+      recordInteraction(interaction, measurementHint);
       for (const planned of plannedToolCalls) {
         dispatchRuntimeEvent(createRuntimeEvent('tool.started', {
           toolId: planned.toolId,
@@ -439,7 +532,7 @@ export function useAnyaUI(): UseAnyaUI {
           record,
         }, { source: 'system' }));
         if (!record.toolId) continue;
-        pendingToolCalls.delete(toRecordKey(record));
+        pendingToolCalls.delete(createToolCallKey(record.bindingId, record.toolId));
         if (record.status === 'success') {
           dispatchRuntimeEvent(createRuntimeEvent('tool.finished', {
             toolId: record.toolId,
@@ -481,6 +574,9 @@ export function useAnyaUI(): UseAnyaUI {
 
   const setUserIntent = useCallback(
     (intent: string, mode?: IntentUpdateMode) => {
+      if (mode === 'replace') {
+        measurementTrackerRef.current.reset();
+      }
       dispatchRuntimeEvent(createRuntimeEvent('session.intent_updated', {
         userIntent: intent,
         mode,
@@ -504,31 +600,13 @@ export function useAnyaUI(): UseAnyaUI {
     [ctx.runtime]
   );
 
-  const runAgentTurn = useCallback(async (input: {
+  const startAgentSession = useCallback((input: {
+    sessionId?: string;
     userIntent: string;
     messages: AgentMessage[];
     promptOptions?: PromptOptions;
-    transport?: ModelTransport;
-  }) => {
-    try {
-      if (input.transport) {
-        ctx.orchestrator.setTransport(input.transport);
-      }
-
-      const result = await ctx.orchestrator.completeTurnWithTransport({
-        userIntent: input.userIntent,
-        messages: input.messages,
-        promptOptions: input.promptOptions,
-        applyLifecycle: false,
-      });
-
-      publishSpec(result.spec);
-      return result;
-    } catch (error) {
-      reportDecodeFailure(error, 'Unknown transport/decode error');
-      throw error;
-    }
-  }, [ctx.orchestrator, publishSpec, reportDecodeFailure]);
+    transport?: AgentSessionTransport;
+  }) => ctx.orchestrator.startAgentSession(input), [ctx.orchestrator]);
 
   const getProfile = useCallback(
     () => ctx.profile.getContent(),
@@ -542,6 +620,7 @@ export function useAnyaUI(): UseAnyaUI {
 
   return {
     buildSystemPrompt,
+    buildSelectionPrompt,
     getPromptParts,
     presentationState,
     setPresentationContext,
@@ -566,7 +645,7 @@ export function useAnyaUI(): UseAnyaUI {
     setAgentStatus,
     dispatchRuntimeEvent,
     subscribeRuntimeEvents,
-    runAgentTurn,
+    startAgentSession,
     runtimeState,
     getProfile,
     registerComponent,

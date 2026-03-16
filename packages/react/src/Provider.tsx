@@ -18,6 +18,7 @@ import {
   type AdaptiveProfile,
   type AnyaKernel,
   type AnyaKernelConfig,
+  type BehaviorAnalysisRunCapture,
   type ComponentCapability,
   type ComponentCatalog,
   createAnyaKernel,
@@ -42,6 +43,7 @@ import {
   type WorkflowContextRegistry,
 } from '@anya-ui/core';
 import type { AnyaComponent } from './defineComponent';
+import { stableSerialize } from './utils/stableSerialize';
 
 // ─── Context Types ───────────────────────────────────────────────────────
 
@@ -102,7 +104,7 @@ interface UiMemoryMountSnapshot {
   sessionId: string | undefined;
   storePolicy: NonNullable<AnyaKernelConfig['uiMemory']>['storePolicy'];
   storeRuntime: NonNullable<AnyaKernelConfig['uiMemory']>['storeRuntime'];
-  fallbackToMemory: boolean | undefined;
+  allowMemoryDowngrade: boolean | undefined;
   syncTimeoutMs: number | undefined;
   materializeProfile: boolean | undefined;
   triggerConfig: string;
@@ -110,6 +112,7 @@ interface UiMemoryMountSnapshot {
   windowConfig: string;
   sqlite: string;
   indexeddb: string;
+  behavior: string;
   store: NonNullable<AnyaKernelConfig['uiMemory']>['store'];
   runPrompt: NonNullable<AnyaKernelConfig['uiMemory']>['runPrompt'];
   getToolManifest: NonNullable<AnyaKernelConfig['uiMemory']>['getToolManifest'];
@@ -133,20 +136,6 @@ const MOUNT_ONLY_PROVIDER_PROP_HELP: Record<MountOnlyProviderProp, string> = {
 
 function snapshotStringArray(values?: readonly string[]): string[] {
   return values ? [...values] : [];
-}
-
-function stableSerialize(value: unknown): string {
-  if (value === undefined) return 'undefined';
-  if (value === null) return 'null';
-  if (Array.isArray(value)) {
-    return `[${value.map((entry) => stableSerialize(entry)).join(',')}]`;
-  }
-  if (typeof value === 'object') {
-    const entries = Object.entries(value as Record<string, unknown>)
-      .sort(([left], [right]) => left.localeCompare(right));
-    return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${stableSerialize(entry)}`).join(',')}}`;
-  }
-  return JSON.stringify(value);
 }
 
 function snapshotComponents(components: AnyaComponent[]): ComponentMountSnapshot[] {
@@ -189,6 +178,22 @@ function snapshotWorkflowContexts(workflowContexts: WorkflowContextDefinition[])
   }));
 }
 
+function snapshotUiBehaviorConfig(
+  behavior?: NonNullable<AnyaKernelConfig['uiMemory']>['behavior'],
+): string {
+  return stableSerialize({
+    enabled: behavior?.enabled ?? false,
+    aggregateWindowMs: behavior?.aggregateWindowMs,
+    syncTimeoutMs: behavior?.syncTimeoutMs,
+    windowConfig: behavior?.windowConfig,
+    schedulerPolicy: behavior?.schedulerPolicy,
+    analyzerIds: behavior?.analyzers?.map((analyzer) => analyzer.id) ?? [],
+    captureSnapshots: behavior?.captureSnapshots ?? false,
+    hasStore: Boolean(behavior?.store),
+    hasInterpreterPolicy: Boolean(behavior?.interpreterPolicy),
+  });
+}
+
 function snapshotUiMemoryConfig(uiMemory?: AnyaKernelConfig['uiMemory']): UiMemoryMountSnapshot | undefined {
   if (!uiMemory) return undefined;
 
@@ -198,7 +203,7 @@ function snapshotUiMemoryConfig(uiMemory?: AnyaKernelConfig['uiMemory']): UiMemo
     sessionId: uiMemory.sessionId,
     storePolicy: uiMemory.storePolicy,
     storeRuntime: uiMemory.storeRuntime,
-    fallbackToMemory: uiMemory.fallbackToMemory,
+    allowMemoryDowngrade: uiMemory.allowMemoryDowngrade,
     syncTimeoutMs: uiMemory.syncTimeoutMs,
     materializeProfile: uiMemory.materializeProfile,
     triggerConfig: stableSerialize(uiMemory.triggerConfig),
@@ -206,6 +211,7 @@ function snapshotUiMemoryConfig(uiMemory?: AnyaKernelConfig['uiMemory']): UiMemo
     windowConfig: stableSerialize(uiMemory.windowConfig),
     sqlite: stableSerialize(uiMemory.sqlite),
     indexeddb: stableSerialize(uiMemory.indexeddb),
+    behavior: snapshotUiBehaviorConfig(uiMemory.behavior),
     store: uiMemory.store,
     runPrompt: uiMemory.runPrompt,
     getToolManifest: uiMemory.getToolManifest,
@@ -270,7 +276,7 @@ function areUiMemorySnapshotsEqual(
     && left.sessionId === right.sessionId
     && left.storePolicy === right.storePolicy
     && left.storeRuntime === right.storeRuntime
-    && left.fallbackToMemory === right.fallbackToMemory
+    && left.allowMemoryDowngrade === right.allowMemoryDowngrade
     && left.syncTimeoutMs === right.syncTimeoutMs
     && left.materializeProfile === right.materializeProfile
     && left.triggerConfig === right.triggerConfig
@@ -278,6 +284,7 @@ function areUiMemorySnapshotsEqual(
     && left.windowConfig === right.windowConfig
     && left.sqlite === right.sqlite
     && left.indexeddb === right.indexeddb
+    && left.behavior === right.behavior
     && left.store === right.store
     && left.runPrompt === right.runPrompt
     && left.getToolManifest === right.getToolManifest;
@@ -329,6 +336,8 @@ export interface AnyaProviderProps {
   onFailureBudgetSignal?: (signal: RuntimeFailureBudgetSignal) => void;
   /** Optional side-effect hook for runtime events (e.g. LLM orchestration) */
   onRuntimeEvent?: (event: RuntimeEvent, state: RuntimeState) => void | Promise<void>;
+  /** Optional callback for completed behavior-analysis runs and replay capture. */
+  onBehaviorAnalysisRun?: (capture: BehaviorAnalysisRunCapture) => void;
   /** Mount-only UI memory pipeline configuration. Remount to change it. */
   uiMemory?: AnyaKernelConfig['uiMemory'];
   children: ReactNode;
@@ -346,6 +355,7 @@ export function AnyaProvider({
   failureBudgetPolicy,
   onFailureBudgetSignal,
   onRuntimeEvent,
+  onBehaviorAnalysisRun,
   uiMemory,
   children,
 }: AnyaProviderProps) {
@@ -457,6 +467,10 @@ export function AnyaProvider({
       );
     }
   }, [currentMountSnapshot]);
+
+  React.useEffect(() => {
+    kernel.uiBehaviorPipeline?.setOnCapture(onBehaviorAnalysisRun);
+  }, [kernel.uiBehaviorPipeline, onBehaviorAnalysisRun]);
 
   React.useEffect(() => {
     const effects: RuntimeEffect[] = createDefaultRuntimeEffects({

@@ -2,7 +2,13 @@
  * Runtime-aware renderer wrapper.
  * Bridges renderer interactions into useAnyaUI.handleUserInteraction().
  */
-import type { BindingExecutionRecord, UIInteractionRecord, UIRenderSpec } from '@anya-ui/core';
+import { useCallback } from 'react';
+import type {
+  BindingExecutionRecord,
+  UIInteractionMeasurementHint,
+  UIInteractionRecord,
+  UIRenderSpec,
+} from '@anya-ui/core';
 import { AdaptiveRenderer, type AdaptiveRendererProps } from './AdaptiveRenderer';
 import { useAnyaUI } from './hooks/useAnyaUI';
 
@@ -23,12 +29,10 @@ export interface AdaptiveRuntimeRendererProps extends Omit<AdaptiveRendererProps
   }) => void;
 }
 
-import { useCallback } from 'react';
-
 export function AdaptiveRuntimeRenderer({
   spec,
   registry,
-  fallback,
+  unknownComponent,
   onInteractionExecuted,
 }: AdaptiveRuntimeRendererProps) {
   const {
@@ -38,36 +42,35 @@ export function AdaptiveRuntimeRenderer({
 
   const resolvedSpec = spec ?? presentationState.currentSpec;
 
-  const handleInteraction = useCallback((componentName: string, record: Omit<UIInteractionRecord, 'timestamp'>) => {
+  const handleInteraction = useCallback((
+    componentName: string,
+    record: Omit<UIInteractionRecord, 'timestamp'>,
+    measurementHint?: UIInteractionMeasurementHint,
+  ) => {
     const interaction: UIInteractionRecord = {
       ...record,
       timestamp: Date.now(),
     };
     const startedAt = Date.now();
-    void handleUserInteraction(interaction)
-      .then((records) => {
-        onInteractionExecuted?.({
-          interaction,
-          componentName,
-          records,
-          durationMs: Date.now() - startedAt,
-        });
-      })
-      .catch(() => {
-        onInteractionExecuted?.({
-          interaction,
-          componentName,
-          records: [],
-          durationMs: Date.now() - startedAt,
-        });
+    const finish = (records: BindingExecutionRecord[]): void => {
+      onInteractionExecuted?.({
+        interaction,
+        componentName,
+        records,
+        durationMs: Date.now() - startedAt,
       });
+    };
+
+    void handleUserInteraction(interaction, measurementHint)
+      .then(finish)
+      .catch(() => finish([]));
   }, [handleUserInteraction, onInteractionExecuted]);
 
   return (
     <AdaptiveRenderer
       spec={resolvedSpec}
       registry={registry}
-      fallback={fallback}
+      unknownComponent={unknownComponent}
       onInteraction={handleInteraction}
     />
   );

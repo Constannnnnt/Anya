@@ -9,14 +9,22 @@
  */
 
 import React, { type ComponentType } from 'react';
-import { getLogger, normalizeStyleProp, type UIRenderSpec, type UIComponentSpec, type UIInteractionRecord, type UIInteractionDefinition } from '@anya-ui/core';
+import { useSnapshot } from 'valtio';
+import { getLogger, normalizeStyleProp, resolveBindingValue, type UIRenderSpec, type UIComponentSpec, type UIInteractionRecord, type UIInteractionDefinition } from '@anya-ui/core';
 import { useAnyaContext } from './Provider';
 import type { AnyaComponent, AnyaRenderProps } from './defineComponent';
+import { measurePointerTarget } from './behavior/telemetry';
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
 /** Optional manual component map (overrides auto-resolution) */
 export type ComponentRegistry = Record<string, ComponentType<AnyaRenderProps<any>>>;
+type InteractionDetail = NonNullable<Parameters<AnyaRenderProps['onInteraction']>[1]>;
+type RendererInteractionHandler = (
+    componentName: string,
+    record: Omit<UIInteractionRecord, 'timestamp'>,
+    measurementHint?: InteractionDetail['measurementHint'],
+) => void;
 
 export interface AdaptiveRendererProps {
     /** The UI spec produced by the agent */
@@ -24,12 +32,12 @@ export interface AdaptiveRendererProps {
     /** Optional manual component map (overrides Provider registry) */
     registry?: ComponentRegistry;
     /** Callback when a component reports an interaction */
-    onInteraction?: (componentName: string, record: Omit<UIInteractionRecord, 'timestamp'>) => void;
-    /** Fallback for unknown components */
-    fallback?: ComponentType<{ type: string }>;
+    onInteraction?: RendererInteractionHandler;
+    /** Renderer for unknown component types */
+    unknownComponent?: ComponentType<{ type: string }>;
 }
 
-function DefaultFallback({ type }: { type: string }) {
+function DefaultUnknownComponent({ type }: { type: string }) {
     return (
         <div style={{
             padding: '12px',
@@ -47,18 +55,23 @@ export function AdaptiveRenderer({
     spec,
     registry: manualRegistry,
     onInteraction,
-    fallback: FallbackComponent = DefaultFallback,
+    unknownComponent: UnknownComponent = DefaultUnknownComponent,
 }: AdaptiveRendererProps) {
     // Auto-resolve from Provider if no manual registry
     let resolvedMap: Map<string, ComponentType<any>> | undefined;
     let pluginMap: Map<string, AnyaComponent> | undefined;
+    let dataNodes: any[] = [];
+    
     try {
         const ctx = useAnyaContext();
         resolvedMap = ctx.componentMap;
         pluginMap = ctx.pluginMap;
+        dataNodes = ctx.presentation.getState().context.dataNodes;
     } catch {
         // Not in a provider — manual registry required
     }
+
+    const dataSnap = useSnapshot(dataNodes);
 
     if (!spec) return null;
 
@@ -70,11 +83,12 @@ export function AdaptiveRenderer({
                 <MemoizedRenderComponent
                     key={comp.id}
                     spec={comp}
+                    dataSnap={dataSnap}
                     resolvedMap={resolvedMap}
                     pluginMap={pluginMap}
                     manualRegistry={manualRegistry}
                     onInteraction={onInteraction}
-                    fallback={FallbackComponent}
+                    unknownComponent={UnknownComponent}
                 />
             ))}
         </div>
@@ -85,45 +99,46 @@ export function AdaptiveRenderer({
 
 interface RenderComponentProps {
     spec: UIComponentSpec;
+    dataSnap: any;
+    parentSpec?: UIComponentSpec;
     resolvedMap?: Map<string, ComponentType<any>>;
     pluginMap?: Map<string, AnyaComponent>;
     manualRegistry?: ComponentRegistry;
-    onInteraction?: (componentName: string, record: Omit<UIInteractionRecord, 'timestamp'>) => void;
-    fallback: ComponentType<{ type: string }>;
+    onInteraction?: RendererInteractionHandler;
+    unknownComponent: ComponentType<{ type: string }>;
 }
 
 function RenderComponent({
     spec,
+    dataSnap,
+    parentSpec,
     resolvedMap,
     pluginMap,
     manualRegistry,
     onInteraction,
-    fallback: Fallback,
+    unknownComponent: UnknownComponent,
 }: RenderComponentProps) {
     const logger = getLogger();
+
     // Try manual registry first, then auto-resolved map
     const Component =
         manualRegistry?.[spec.type] ??
         resolvedMap?.get(spec.type);
 
     if (!Component) {
-        return <Fallback type={spec.type} />;
+        return <UnknownComponent type={spec.type} />;
     }
 
+    // Resolve props recursively for live reactivity
+    const resolvedProps = React.useMemo(() => {
+        return resolveBindingValue(spec.props, {
+            interaction: undefined as any,
+            dataNodes: dataSnap as any,
+        }) as Record<string, unknown>;
+    }, [spec.props, dataSnap]);
+
     const handleInteraction: AnyaRenderProps['onInteraction'] = (action, detail) => {
-        const record = {
-            elementId: spec.id,
-            componentName: spec.type,
-            action,
-            trigger: detail?.trigger,
-            propName: detail?.propName,
-            previousValue: detail?.previousValue,
-            newValue: detail?.newValue,
-            semanticDescription: detail?.semanticDescription,
-            sourceId: detail?.sourceId,
-            targetIds: detail?.targetIds,
-            targetAction: detail?.targetAction,
-        } as Omit<UIInteractionRecord, 'timestamp'>;
+        const record = buildInteractionRecord(spec, action, detail);
 
         const plugin = pluginMap?.get(spec.type);
         if (plugin?.onInteraction) {
@@ -137,47 +152,28 @@ function RenderComponent({
             }
         }
 
-        onInteraction?.(spec.type, record);
+        onInteraction?.(spec.type, record, detail?.measurementHint);
     };
 
-    // Generate native React event handlers from the agent's interaction specs
-    const dynamicInteractions: Record<string, (event: React.SyntheticEvent) => void> = {};
-    if (spec.interactions) {
-        const grouped = new Map<UIInteractionDefinition['trigger'], UIInteractionDefinition[]>();
-        spec.interactions.forEach((interaction) => {
-            const existing = grouped.get(interaction.trigger);
-            if (existing) {
-                existing.push(interaction);
-            } else {
-                grouped.set(interaction.trigger, [interaction]);
-            }
-        });
-
-        grouped.forEach((interactions, trigger) => {
-            dynamicInteractions[trigger] = (event: React.SyntheticEvent) => {
-                event.stopPropagation();
-                for (const interaction of interactions) {
-                    handleInteraction(interaction.action as UIInteractionRecord['action'], {
-                        trigger: interaction.trigger,
-                        semanticDescription: interaction.description,
-                        targetIds: interaction.targetIds,
-                        targetAction: interaction.targetAction,
-                    });
-                }
-            };
-        });
-    }
+    const dynamicInteractions = buildDynamicInteractions(
+        spec,
+        parentSpec,
+        spec.interactions ?? [],
+        handleInteraction,
+    );
 
     // Render children recursively
     const children = spec.children?.map((child: UIComponentSpec) => (
         <MemoizedRenderComponent
             key={child.id}
             spec={child}
+            dataSnap={dataSnap}
+            parentSpec={spec}
             resolvedMap={resolvedMap}
             pluginMap={pluginMap}
             manualRegistry={manualRegistry}
             onInteraction={onInteraction}
-            fallback={Fallback}
+            unknownComponent={UnknownComponent}
         />
     ));
 
@@ -188,7 +184,7 @@ function RenderComponent({
         draggable?: boolean;
         dynamicInteractions: Record<string, (event: React.SyntheticEvent) => void>;
     } = {
-        ...(spec.props as Record<string, unknown>),
+        ...resolvedProps,
         draggable: spec.draggable,
         dynamicInteractions,
     };
@@ -213,11 +209,13 @@ const MemoizedRenderComponent = React.memo(
     RenderComponent,
     (prev, next) =>
         prev.spec === next.spec
+        && prev.dataSnap === next.dataSnap
+        && prev.parentSpec === next.parentSpec
         && prev.resolvedMap === next.resolvedMap
         && prev.pluginMap === next.pluginMap
         && prev.manualRegistry === next.manualRegistry
         && prev.onInteraction === next.onInteraction
-        && prev.fallback === next.fallback
+        && prev.unknownComponent === next.unknownComponent
 );
 
 // ─── Layout Helpers ──────────────────────────────────────────────────────
@@ -264,4 +262,95 @@ function getLayoutStyle(layout: UIRenderSpec['layout']): React.CSSProperties {
                 padding: '24px',
             };
     }
+}
+
+function buildInteractionRecord(
+    spec: UIComponentSpec,
+    action: UIInteractionRecord['action'],
+    detail?: InteractionDetail,
+): Omit<UIInteractionRecord, 'timestamp'> {
+    return {
+        elementId: spec.id,
+        componentName: spec.type,
+        action,
+        trigger: detail?.trigger,
+        propName: detail?.propName,
+        previousValue: detail?.previousValue,
+        newValue: detail?.newValue,
+        semanticDescription: detail?.semanticDescription,
+        sourceId: detail?.sourceId,
+        targetIds: detail?.targetIds,
+        targetAction: detail?.targetAction,
+    };
+}
+
+function buildDynamicInteractions(
+    spec: UIComponentSpec,
+    parentSpec: UIComponentSpec | undefined,
+    interactions: UIInteractionDefinition[],
+    handleInteraction: NonNullable<AnyaRenderProps['onInteraction']>,
+): Record<string, (event: React.SyntheticEvent) => void> {
+    const dynamicInteractions: Record<string, (event: React.SyntheticEvent) => void> = {};
+    const interactionsByTrigger = groupInteractionsByTrigger(interactions);
+    const choiceSetSize = deriveDynamicChoiceSetSize(spec, parentSpec);
+
+    interactionsByTrigger.forEach((triggerInteractions, trigger) => {
+        dynamicInteractions[trigger] = (event: React.SyntheticEvent) => {
+            event.stopPropagation();
+            const nativeEvent = event.nativeEvent as { clientX?: number; clientY?: number; detail?: number } | undefined;
+            const measurementHint = measurePointerTarget(event.currentTarget, nativeEvent ?? null, {
+                choiceSetSize,
+            });
+
+            for (const interaction of triggerInteractions) {
+                handleInteraction(interaction.action as UIInteractionRecord['action'], {
+                    trigger: interaction.trigger,
+                    semanticDescription: interaction.description,
+                    targetIds: interaction.targetIds,
+                    targetAction: interaction.targetAction,
+                    measurementHint,
+                });
+            }
+        };
+    });
+
+    return dynamicInteractions;
+}
+
+function groupInteractionsByTrigger(
+    interactions: UIInteractionDefinition[],
+): Map<UIInteractionDefinition['trigger'], UIInteractionDefinition[]> {
+    const grouped = new Map<UIInteractionDefinition['trigger'], UIInteractionDefinition[]>();
+
+    for (const interaction of interactions) {
+        const existing = grouped.get(interaction.trigger);
+        if (existing) {
+            existing.push(interaction);
+            continue;
+        }
+
+        grouped.set(interaction.trigger, [interaction]);
+    }
+
+    return grouped;
+}
+
+function deriveDynamicChoiceSetSize(
+    spec: UIComponentSpec,
+    parentSpec?: UIComponentSpec,
+): number | undefined {
+    const normalizedType = spec.type.toLowerCase();
+    if (normalizedType === 'tabs') {
+        const count = spec.children?.length ?? 0;
+        return count >= 2 ? count : undefined;
+    }
+
+    if (!parentSpec || !['button', 'link', 'tabitem'].includes(normalizedType)) {
+        return undefined;
+    }
+
+    const choiceChildren = (parentSpec.children ?? []).filter((child) =>
+        ['button', 'link', 'tabitem'].includes(child.type.toLowerCase()),
+    );
+    return choiceChildren.length >= 2 ? choiceChildren.length : undefined;
 }

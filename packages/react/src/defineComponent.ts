@@ -9,7 +9,11 @@
 
 import type { ComponentType } from 'react';
 import type { ZodType } from 'zod';
-import type { ComponentCapability, UIInteractionRecord } from '@anya-ui/core';
+import type {
+  ComponentCapability,
+  UIInteractionMeasurementHint,
+  UIInteractionRecord,
+} from '@anya-ui/core';
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
@@ -33,6 +37,7 @@ export interface AnyaRenderProps<T = Record<string, unknown>> {
       sourceId?: string;
       targetIds?: string[];
       targetAction?: string;
+      measurementHint?: UIInteractionMeasurementHint;
     }
   ) => void;
   /** Elements this component's state natively binds to */
