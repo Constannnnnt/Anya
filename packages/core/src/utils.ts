@@ -27,15 +27,80 @@ export function applyOptimisticUpdate(
     && typeof interaction.sourceId === 'string'
     && Array.isArray(interaction.targetIds)
     && interaction.targetIds.length > 0;
-  const isChange = interaction.action === 'change' && typeof interaction.propName === 'string';
+  const isChange =
+    (interaction.action === 'change' || interaction.action === 'value_change')
+    && typeof interaction.propName === 'string';
 
   // Avoid cloning for interaction types that do not mutate UI state optimistically.
   if (!isDrop && !isChange) {
     return spec;
   }
 
+  function normalizePathSegments(path: string): string[] {
+    return path.replace(/\[(\w+)\]/g, '.$1').split('.').filter(Boolean);
+  }
+
+  function getRootPropName(path: string): string {
+    return normalizePathSegments(path)[0] ?? path;
+  }
+
+  function buildContainer(nextSegment: string | undefined): Record<string, unknown> | unknown[] {
+    return nextSegment !== undefined && /^\d+$/.test(nextSegment) ? [] : {};
+  }
+
+  function setPropValue(
+    props: Record<string, unknown>,
+    propPath: string,
+    newValue: unknown,
+  ): void {
+    const segments = normalizePathSegments(propPath);
+    if (segments.length === 0) {
+      return;
+    }
+
+    if (segments.length === 1) {
+      props[segments[0]] = newValue;
+      return;
+    }
+
+    const rootSegment = segments[0];
+    let current = props[rootSegment];
+    if (typeof current !== 'object' || current === null) {
+      current = buildContainer(segments[1]);
+      props[rootSegment] = current;
+    }
+
+    let cursor = current as Record<string, unknown> | unknown[];
+    for (let index = 1; index < segments.length - 1; index += 1) {
+      const segment = segments[index];
+      const nextSegment = segments[index + 1];
+      const record = cursor as Record<string, unknown>;
+      const nextValue = record[segment];
+
+      if (typeof nextValue !== 'object' || nextValue === null) {
+        record[segment] = buildContainer(nextSegment);
+      }
+
+      cursor = record[segment] as Record<string, unknown> | unknown[];
+    }
+
+    (cursor as Record<string, unknown>)[segments[segments.length - 1]] = newValue;
+  }
+
   function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null;
+  }
+
+  function isDataBindingExpression(value: unknown): boolean {
+    if (!isRecord(value) || !('$data' in value)) {
+      return false;
+    }
+    const dataSelector = value.$data;
+    return typeof dataSelector === 'string'
+      || (
+        isRecord(dataSelector)
+        && typeof dataSelector.nodeId === 'string'
+      );
   }
 
   function canAcceptChildren(node: UIComponentSpec): boolean {
@@ -94,11 +159,27 @@ export function applyOptimisticUpdate(
     return false;
   }
 
+  function normalizeBindTarget(
+    target: NonNullable<UIComponentSpec['bindTo']>[number],
+  ): { targetId: string; targetProp?: string } {
+    if (typeof target === 'string') {
+      return { targetId: target };
+    }
+
+    return {
+      targetId: target.targetId,
+      targetProp: target.targetProp,
+    };
+  }
+
   function updateProp(nodes: UIComponentSpec[], id: string, propName: string, newValue: unknown): boolean {
     for (const node of nodes) {
       if (node.id === id) {
         if (!node.props) node.props = {};
-        node.props[propName] = newValue;
+        const rootPropName = getRootPropName(propName);
+        if (!isDataBindingExpression(node.props[rootPropName])) {
+          setPropValue(node.props, propName, newValue);
+        }
         return true;
       }
       if (node.children && updateProp(node.children, id, propName, newValue)) {
@@ -113,29 +194,38 @@ export function applyOptimisticUpdate(
     const stack = [...nodes];
     while (stack.length > 0) {
       const next = stack.pop()!;
-      nodeIndex.set(next.id, next);
+      nodeIndex.set(next.id!, next);
       if (next.children?.length) {
         stack.push(...next.children);
       }
     }
 
-    const visited = new Set<string>([sourceId]);
-    const queue: string[] = [sourceId];
+    const visited = new Set<string>([`${sourceId}:${propName}`]);
+    const queue: Array<{ nodeId: string; propPath: string }> = [{ nodeId: sourceId, propPath: propName }];
 
     for (let index = 0; index < queue.length; index += 1) {
-      const currentId = queue[index];
+      const { nodeId: currentId, propPath } = queue[index];
       const currentNode = nodeIndex.get(currentId);
       if (!currentNode || !currentNode.bindTo?.length) continue;
 
-      for (const targetId of currentNode.bindTo) {
-        if (visited.has(targetId)) continue;
+      for (const rawTarget of currentNode.bindTo) {
+        const target = normalizeBindTarget(rawTarget);
+        const targetPropPath = target.targetProp ?? propPath;
+        const targetKey = `${target.targetId}:${targetPropPath}`;
+        if (visited.has(targetKey)) continue;
 
-        const targetNode = nodeIndex.get(targetId);
+        const targetNode = nodeIndex.get(target.targetId);
         if (!targetNode) continue;
 
-        targetNode.props[propName] = newValue;
-        visited.add(targetId);
-        queue.push(targetId);
+        if (!targetNode.props) {
+          targetNode.props = {};
+        }
+        const rootPropName = getRootPropName(targetPropPath);
+        if (!isDataBindingExpression(targetNode.props[rootPropName])) {
+          setPropValue(targetNode.props, targetPropPath, newValue);
+        }
+        visited.add(targetKey);
+        queue.push({ nodeId: target.targetId, propPath: targetPropPath });
       }
     }
   }

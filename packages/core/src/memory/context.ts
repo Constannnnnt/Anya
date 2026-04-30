@@ -111,9 +111,9 @@ export class ContextMemoryManager {
 
   private trackElements(components: UIComponentSpec[]): void {
     for (const comp of components) {
-      if (!this.elementHistories.has(comp.id)) {
-        this.elementHistories.set(comp.id, {
-          id: comp.id,
+      if (!this.elementHistories.has(comp.id!)) {
+        this.elementHistories.set(comp.id!, {
+          id: comp.id!,
           type: comp.type,
           createdAt: Date.now(),
           actions: [{ timestamp: Date.now(), action: 'expand', description: 'Created' }],
