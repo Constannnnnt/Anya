@@ -1,24 +1,24 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import { describe, expect, it } from 'vitest';
-import type { InteractionMeasuredEvent, RuntimeEvent, UIRenderSpec } from '@anya-ui/core';
-import { AdaptiveRuntimeRenderer } from '../src/AdaptiveRuntimeRenderer';
+import type { InteractionMeasuredEvent, RuntimeEvent, ViewSpec } from '@anya-ui/core';
+import { AdaptiveRenderer } from '../src/AdaptiveRenderer';
 import { AnyaProvider } from '../src/Provider';
 import { useAnyaUI } from '../src/hooks/useAnyaUI';
 import { builtInPrimitives } from '../src/primitives';
 
 function BehaviorHarness(props: {
-  spec: UIRenderSpec;
+  spec: ViewSpec;
   onMeasured: (event: InteractionMeasuredEvent) => void;
   onReady: () => void;
 }) {
-  const { publishSpec, subscribeRuntimeEvents } = useAnyaUI();
+  const { publishView, subscribeRuntimeEvents, handleUserInteraction } = useAnyaUI();
   const { spec, onMeasured, onReady } = props;
 
   React.useEffect(() => {
-    publishSpec(spec);
+    publishView(spec);
     onReady();
-  }, [onReady, publishSpec, spec]);
+  }, [onReady, publishView, spec]);
 
   React.useEffect(() => subscribeRuntimeEvents('interaction.measured', (event: RuntimeEvent) => {
     if (event.type === 'interaction.measured') {
@@ -26,7 +26,21 @@ function BehaviorHarness(props: {
     }
   }), [onMeasured, subscribeRuntimeEvents]);
 
-  return <AdaptiveRuntimeRenderer spec={spec} />;
+  return (
+    <AdaptiveRenderer
+      spec={spec}
+      onInteraction={(componentName, record, measurementHint) => {
+        handleUserInteraction(
+          {
+            ...record,
+            componentName,
+            timestamp: Date.now(),
+          },
+          measurementHint
+        );
+      }}
+    />
+  );
 }
 
 describe('behavior runtime measurement integration', () => {
@@ -150,3 +164,4 @@ describe('behavior runtime measurement integration', () => {
     expect(selectEvent?.payload.measurement.choiceSetSize).toBe(3);
   });
 });
+

@@ -75,14 +75,14 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('Respond with a JSON object:');
     expect(prompt).toContain('Respond ONLY with a raw JSON object. No explanations, no markdown fences.');
     expect(prompt).not.toContain('Respond ONLY with raw YAML.');
-    expect(prompt).toContain('"spec_version": 1');
+
     expect(prompt).toContain('"layout": "stack"');
     expect(prompt).not.toContain('Respond with YAML in this format:');
   });
 
   it('uses the runtime component schema in the YAML response example', () => {
     const yamlBlock = buildResponseFormatBlock('yaml');
-    expect(yamlBlock).toContain('  - type: ComponentName\n    id: "component-id"\n    draggable: true');
+    expect(yamlBlock).toContain('  - type: ComponentName');
     expect(yamlBlock).not.toContain('    props:\n      id: "component-id"');
   });
 

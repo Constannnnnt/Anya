@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { defineComponent } from '../defineComponent';
 import {
     measureSelectionTarget,
+    splitDynamicInteractions,
     useSyncedState,
     type PrimitiveBehaviorProps,
     type PrimitiveRenderProps,
@@ -32,12 +33,13 @@ export const RadioButton = defineComponent({
     render: ({ id, props, onInteraction }: PrimitiveRenderProps<RadioButtonProps>) => {
         const [selected, setSelected] = useSyncedState(props.value, '');
         const groupName = props.name ?? id;
+        const { containerInteractions } = splitDynamicInteractions(props.dynamicInteractions);
         return (
             <fieldset
                 id={id}
                 className={`anya-radio-group ${props.className || ''}`}
                 style={props.style}
-                {...props.dynamicInteractions}
+                {...containerInteractions}
             >
                 {props.label && <legend className="anya-radio-legend">{props.label}</legend>}
                 {(props.options ?? []).map((opt) => (
@@ -52,6 +54,7 @@ export const RadioButton = defineComponent({
                             onChange={(e) => {
                                 setSelected(opt.value);
                                 onInteraction('value_change', {
+                                    trigger: 'onChange',
                                     propName: 'value',
                                     previousValue: selected,
                                     newValue: opt.value,

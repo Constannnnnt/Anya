@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   collectAgentSessionEvents,
+  collectAgentSessionState,
   collectArtifactsFromSessionEvents,
+  getViewSpec,
+  resolvePrimaryViewArtifact,
 } from '../src/session';
 import type {
   AgentSessionEvent,
@@ -21,33 +24,33 @@ function createRun(events: AgentSessionEvent[]): AgentSessionRun {
   };
 }
 
-function createSurfaceArtifact(): SessionArtifact {
+function createViewArtifact(): SessionArtifact {
   return {
-    id: 'artifact-surface',
+    id: 'artifact-view',
     sessionId: 'session-test',
-    kind: 'surface',
+    kind: 'view',
     version: 1,
     createdAt: 3,
     audience: 'user',
     region: 'main',
     payload: {
-      surface: {
-        surfaceKind: 'ui_spec',
-        surfaceId: 'surface-main',
-        schema: {
-          type: 'anya.ui_spec',
-          spec: {
-            spec_version: 1,
-            layout: 'stack',
-            components: [
-              {
-                id: 'text-1',
-                type: 'Text',
-                props: { content: 'Hello' },
-              },
-            ],
-          },
+      view: {
+        id: 'view-main',
+        format: 'ui_spec',
+        title: 'Main View',
+        workflow: 'greeting',
+        spec: {
+          spec_version: 1,
+          layout: 'stack',
+          components: [
+            {
+              id: 'text-1',
+              type: 'Text',
+              props: { content: 'Hello' },
+            },
+          ],
         },
+        bindings: [],
       },
     },
   };
@@ -84,7 +87,7 @@ describe('session transport utilities', () => {
         type: 'artifact.upserted',
         sessionId: 'session-test',
         timestamp: 3,
-        artifact: createSurfaceArtifact(),
+        artifact: createViewArtifact(),
       },
       {
         type: 'session.completed',
@@ -96,7 +99,7 @@ describe('session transport utilities', () => {
 
     expect(events).toHaveLength(4);
     expect(artifacts).toHaveLength(2);
-    expect(artifacts.map((artifact) => artifact.kind)).toEqual(['message', 'surface']);
+    expect(artifacts.map((artifact) => artifact.kind)).toEqual(['message', 'view']);
   });
 
   it('drops artifacts removed later in the event stream', async () => {
@@ -105,16 +108,33 @@ describe('session transport utilities', () => {
         type: 'artifact.upserted',
         sessionId: 'session-test',
         timestamp: 1,
-        artifact: createSurfaceArtifact(),
+        artifact: createViewArtifact(),
       },
       {
         type: 'artifact.removed',
         sessionId: 'session-test',
         timestamp: 2,
-        artifactId: 'artifact-surface',
+        artifactId: 'artifact-view',
       },
     ])));
 
     expect(artifacts).toHaveLength(0);
+  });
+
+  it('resolves the primary view artifact and its spec from the event stream', async () => {
+    const events = await collectAgentSessionEvents(createRun([
+      {
+        type: 'artifact.upserted',
+        sessionId: 'session-test',
+        timestamp: 1,
+        artifact: createViewArtifact(),
+      },
+    ]));
+
+    const state = collectAgentSessionState(events);
+    const primary = resolvePrimaryViewArtifact(state);
+
+    expect(primary?.id).toBe('artifact-view');
+    expect(getViewSpec(primary)?.components[0]?.id).toBe('text-1');
   });
 });

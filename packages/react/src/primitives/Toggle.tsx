@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { defineComponent } from '../defineComponent';
 import {
     measurePointerInteraction,
+    splitDynamicInteractions,
     useSyncedState,
     type PrimitiveBehaviorProps,
     type PrimitiveRenderProps,
@@ -27,12 +28,13 @@ export const Toggle = defineComponent({
     tags: ['form', 'input', 'toggle'],
     render: ({ id, props, onInteraction }: PrimitiveRenderProps<ToggleProps>) => {
         const [isOn, setIsOn] = useSyncedState(props.checked, false);
+        const { containerInteractions } = splitDynamicInteractions(props.dynamicInteractions);
         return (
             <label
                 id={id}
                 className={`anya-toggle ${isOn ? 'anya-toggle-on' : ''} ${props.disabled ? 'anya-toggle-disabled' : ''} ${props.className || ''}`}
                 style={props.style}
-                {...props.dynamicInteractions}
+                {...containerInteractions}
             >
                 <button
                     type="button"
@@ -44,6 +46,7 @@ export const Toggle = defineComponent({
                         const next = !isOn;
                         setIsOn(next);
                         onInteraction('value_change', {
+                            trigger: 'onChange',
                             propName: 'checked',
                             previousValue: isOn,
                             newValue: next,

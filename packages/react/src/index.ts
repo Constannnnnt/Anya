@@ -4,17 +4,30 @@
  * Primary API:
  *  - defineComponent()  → bundle schema + React component
  *  - <AnyaProvider>     → set up registry context
- *  - useAnyaUI()        → prompt builder, decoder, encoder, register
- *  - <AdaptiveRenderer> → render UIRenderSpec → React components
+ *  - useAnyaUI()        → grouped agent/view/runtime facade
+ *  - <AdaptiveRenderer> → render ViewSpec → React components
  */
 
 // ─── Core ────────────────────────────────────────────────────────────────
 
 export { defineComponent, type AnyaComponent, type AnyaRenderProps, type DefineComponentInput } from './defineComponent';
 export { AnyaProvider, useAnyaContext, type AnyaProviderProps, type AnyaContextValue } from './Provider';
-export { useAnyaUI, type UseAnyaUI } from './hooks/useAnyaUI';
+export {
+  useAnyaUI,
+  type AppliedViewChangeToAppResult,
+  type AppliedViewChangeToTemplateResult,
+  type ApplyViewChangeToAppOptions,
+  type ApplyViewChangeToTemplateOptions,
+  type CompletedAgentSession,
+  type CreateViewChangeDraftFromRecommendationOptions,
+  type FinishAgentSessionOptions,
+  type PublishViewOptions,
+  type SaveSessionViewAsAppOptions,
+  type SaveSessionViewAsTemplateOptions,
+  type UseAnyaUI,
+  type ViewChangeDraftResult,
+} from './hooks/useAnyaUI';
 export { AdaptiveRenderer, type AdaptiveRendererProps, type ComponentRegistry } from './AdaptiveRenderer';
-export { AdaptiveRuntimeRenderer, type AdaptiveRuntimeRendererProps } from './AdaptiveRuntimeRenderer';
 
 // ─── Built-in Primitives (the legos) ─────────────────────────────────────
 

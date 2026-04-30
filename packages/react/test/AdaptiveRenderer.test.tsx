@@ -4,7 +4,7 @@ import React from 'react';
 import { AdaptiveRenderer } from '../src/AdaptiveRenderer';
 import { defineComponent } from '../src/defineComponent';
 import { z } from 'zod';
-import type { UIRenderSpec } from '@anya-ui/core';
+import type { ViewSpec } from '@anya-ui/core';
 
 const TestBox = defineComponent({
     name: 'TestBox',
@@ -14,7 +14,11 @@ const TestBox = defineComponent({
         <div
             data-testid={id}
             data-dynamic={Object.keys(props.dynamicInteractions ?? {}).join(',')}
-            data-bindto={(bindTo ?? []).join(',')}
+            data-bindto={(bindTo ?? [])
+                .map((target) => typeof target === 'string'
+                    ? target
+                    : `${target.targetId}${target.targetProp ? `:${target.targetProp}` : ''}`)
+                .join(',')}
         >
             <h2>{props.title}</h2>
             {children}
@@ -41,7 +45,7 @@ describe('AdaptiveRenderer', () => {
     });
 
     it('renders the unknown-component renderer for unknown components', () => {
-        const spec: UIRenderSpec = {
+        const spec: ViewSpec = {
             layout: 'stack',
             components: [
                 { id: '1', type: 'UnknownThing', props: {} }
@@ -53,7 +57,7 @@ describe('AdaptiveRenderer', () => {
     });
 
     it('recursively renders actual components from a manual registry', () => {
-        const spec: UIRenderSpec = {
+        const spec: ViewSpec = {
             layout: 'stack',
             components: [
                 {
@@ -80,11 +84,11 @@ describe('AdaptiveRenderer', () => {
     });
 
     it('applies row and split root layout styles', () => {
-        const rowSpec: UIRenderSpec = {
+        const rowSpec: ViewSpec = {
             layout: 'row',
             components: [{ id: 'row-1', type: 'TestBox', props: { title: 'Row Box' } }],
         };
-        const splitSpec: UIRenderSpec = {
+        const splitSpec: ViewSpec = {
             layout: 'split',
             components: [
                 { id: 'split-1', type: 'TestBox', props: { title: 'Left Pane' } },
@@ -106,7 +110,7 @@ describe('AdaptiveRenderer', () => {
 
     it('handles interaction bubbling correctly', () => {
         const onInteractionSpy = vi.fn();
-        const spec: UIRenderSpec = {
+        const spec: ViewSpec = {
             layout: 'stack',
             components: [
                 { id: 'target', type: 'TestBox', props: { title: 'Interactive Box' } }
@@ -132,7 +136,7 @@ describe('AdaptiveRenderer', () => {
 
     it('wires up dynamic interactions attached by the agent', () => {
         const onInteractionSpy = vi.fn();
-        const spec: UIRenderSpec = {
+        const spec: ViewSpec = {
             layout: 'stack',
             components: [
                 {
@@ -175,7 +179,7 @@ describe('AdaptiveRenderer', () => {
 
     it('executes all interactions sharing the same trigger in order', () => {
         const onInteractionSpy = vi.fn();
-        const spec: UIRenderSpec = {
+        const spec: ViewSpec = {
             layout: 'stack',
             components: [
                 {
@@ -225,7 +229,7 @@ describe('AdaptiveRenderer', () => {
         const componentA2 = { id: 'a', type: 'Probe', props: { title: 'A2' } };
         const componentB = { id: 'b', type: 'Probe', props: { title: 'B' } };
 
-        const spec1: UIRenderSpec = {
+        const spec1: ViewSpec = {
             layout: 'stack',
             components: [componentA1, componentB],
         };
@@ -234,7 +238,7 @@ describe('AdaptiveRenderer', () => {
         expect(renders.a).toBe(1);
         expect(renders.b).toBe(1);
 
-        const spec2: UIRenderSpec = {
+        const spec2: ViewSpec = {
             layout: 'stack',
             components: [componentA2, componentB],
         };
@@ -244,3 +248,4 @@ describe('AdaptiveRenderer', () => {
         expect(renders.b).toBe(1);
     });
 });
+

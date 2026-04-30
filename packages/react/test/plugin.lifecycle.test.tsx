@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act, render, fireEvent, screen } from '@testing-library/react';
 import React from 'react';
 import { z } from 'zod';
-import type { UIRenderSpec } from '@anya-ui/core';
+import type { ViewSpec } from '@anya-ui/core';
 import { AnyaProvider } from '../src/Provider';
 import { defineComponent } from '../src/defineComponent';
 import { useAnyaUI } from '../src/hooks/useAnyaUI';
@@ -67,7 +67,7 @@ describe('plugin lifecycle integration', () => {
       onInteraction,
     });
 
-    const spec: UIRenderSpec = {
+    const spec: ViewSpec = {
       layout: 'stack',
       components: [
         {
@@ -123,3 +123,4 @@ describe('plugin lifecycle integration', () => {
     expect(result.current.context.pluginMap.has('RestrictedPlugin')).toBe(false);
   });
 });
+

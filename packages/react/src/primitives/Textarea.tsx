@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { defineComponent } from '../defineComponent';
 import {
     measureTextInputTarget,
+    splitDynamicInteractions,
     useSyncedState,
     type PrimitiveBehaviorProps,
     type PrimitiveRenderProps,
@@ -31,12 +32,13 @@ export const Textarea = defineComponent({
     tags: ['form', 'input'],
     render: ({ id, props, onInteraction }: PrimitiveRenderProps<TextareaProps>) => {
         const [val, setVal] = useSyncedState(props.value, '');
+        const { containerInteractions } = splitDynamicInteractions(props.dynamicInteractions);
         return (
             <div
                 id={id}
                 className={`anya-textarea-wrapper ${props.className || ''}`}
                 style={props.style}
-                {...props.dynamicInteractions}
+                {...containerInteractions}
             >
                 {props.label && <label className="anya-textarea-label" htmlFor={`${id}-textarea`}>{props.label}</label>}
                 <textarea
@@ -50,6 +52,7 @@ export const Textarea = defineComponent({
                         const newVal = e.target.value;
                         setVal(newVal);
                         onInteraction('value_change', {
+                            trigger: 'onChange',
                             propName: 'value',
                             previousValue: val,
                             newValue: newVal,

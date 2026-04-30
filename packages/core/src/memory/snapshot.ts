@@ -17,6 +17,7 @@ const InteractionTriggerSchema = z.enum([
   'onDoubleClick',
   'onMouseEnter',
   'onMouseLeave',
+  'onChange',
 ]);
 
 const ToolCallSchema = z.object({
@@ -28,6 +29,8 @@ const UIInteractionDefinitionSchema = z.object({
   trigger: InteractionTriggerSchema,
   action: z.string(),
   description: z.string(),
+  on: InteractionTriggerSchema.optional(),
+  do: z.string().optional(),
   tool_call: ToolCallSchema.optional(),
   targetIds: z.array(z.string()).optional(),
   targetAction: z.string().optional(),
@@ -35,18 +38,26 @@ const UIInteractionDefinitionSchema = z.object({
   route: z.string().optional(),
 }).strict();
 
+const UIBindTargetSchema = z.union([
+  z.string(),
+  z.object({
+    targetId: z.string(),
+    targetProp: z.string().optional(),
+  }).strict(),
+]);
+
 const UIComponentSpecSchema: z.ZodType<UIComponentSpec> = z.lazy(() => z.object({
-  id: z.string(),
+  id: z.string().optional(),
   type: z.string(),
   props: z.record(z.unknown()),
   interactions: z.array(UIInteractionDefinitionSchema).optional(),
-  bindTo: z.array(z.string()).optional(),
+  bindTo: z.array(UIBindTargetSchema).optional(),
   draggable: z.boolean().optional(),
   children: z.array(UIComponentSpecSchema).optional(),
 }).strict());
 
 const UIRenderSpecSchema: z.ZodType<UIRenderSpec> = z.object({
-  spec_version: z.number().int().min(1).default(CURRENT_UI_SPEC_VERSION),
+  spec_version: z.number().int().min(1).optional(),
   skill: z.string().optional(),
   ux_rationale: z.string().optional(),
   layout: z.enum(['stack', 'row', 'grid', 'tabs', 'split']),

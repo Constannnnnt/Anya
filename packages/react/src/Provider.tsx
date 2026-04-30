@@ -15,22 +15,18 @@ import React, {
   type ComponentType,
 } from 'react';
 import {
-  type AdaptiveProfile,
-  type AnyaKernel,
-  type AnyaKernelConfig,
-  type BehaviorAnalysisRunCapture,
+  type AgentBridge,
+  type AnyaRuntime,
+  type AnyaRuntimeConfig,
   type ComponentCapability,
   type ComponentCatalog,
-  createAnyaKernel,
+  createAnyaRuntime,
   createDefaultRuntimeEffects,
   createRuntimeEvent,
-  createRuntimeFailureBudgetEffect,
-  createRuntimeTelemetryEffect,
   getLogger,
-  type ContextMemoryManager,
-  type DynamicOrchestrator,
+  type AppView,
   type FileStorage,
-  type PresentationEngine,
+  type SessionMemory,
   saveThemeTokens,
   type RuntimeEffect,
   type RuntimeEvent,
@@ -38,23 +34,44 @@ import {
   type RuntimeFailureBudgetSignal,
   type RuntimeState,
   type RuntimeStore,
+  type StateGraph,
+  type UserProfile,
+  type ViewRecommendationEngine,
   type RuntimeTelemetrySink,
-  type WorkflowContextDefinition,
-  type WorkflowContextRegistry,
+  type ViewRegistry,
+  type ViewTemplate,
+  type ViewEngine,
+  type WorkflowDefinition,
+  type WorkflowRegistry,
 } from '@anya-ui/core';
+import {
+  createRuntimeFailureBudgetEffect,
+  createRuntimeTelemetryEffect,
+} from '@anya-ui/core/internal';
 import type { AnyaComponent } from './defineComponent';
 import { stableSerialize } from './utils/stableSerialize';
+
+type BehaviorAnalysisRunCapture = Parameters<
+  NonNullable<
+    NonNullable<
+      NonNullable<AnyaRuntimeConfig['uiMemory']>['behavior']
+    >['onCapture']
+  >
+>[0];
 
 // ─── Context Types ───────────────────────────────────────────────────────
 
 export interface AnyaContextValue {
   catalog: ComponentCatalog;
-  workflowContexts: WorkflowContextRegistry;
-  memory: ContextMemoryManager;
-  profile: AdaptiveProfile;
-  orchestrator: DynamicOrchestrator;
+  workflowRegistry: WorkflowRegistry;
+  viewRegistry: ViewRegistry;
+  sessionMemory: SessionMemory;
+  userProfile: UserProfile;
+  agentBridge: AgentBridge;
   runtime: RuntimeStore;
-  presentation: PresentationEngine;
+  viewEngine: ViewEngine;
+  stateGraph: StateGraph;
+  viewRecommendations?: ViewRecommendationEngine;
   componentMap: Map<string, ComponentType<any>>;
   pluginMap: Map<string, AnyaComponent>;
   applyThemeUpdate: (update: Record<string, string>) => void;
@@ -62,7 +79,14 @@ export interface AnyaContextValue {
 
 const AnyaContext = createContext<AnyaContextValue | null>(null);
 
-type MountOnlyProviderProp = 'components' | 'workflowContexts' | 'allowedCapabilities' | 'storage' | 'uiMemory';
+type MountOnlyProviderProp =
+  | 'components'
+  | 'workflows'
+  | 'appViews'
+  | 'viewTemplates'
+  | 'allowedCapabilities'
+  | 'storage'
+  | 'uiMemory';
 
 interface ComponentMountSnapshot {
   name: string;
@@ -83,7 +107,7 @@ interface WorkflowMountSnapshot {
   contextInputs: string[];
   outputExpectations: string[];
   expandable: boolean;
-  defaultLayout: WorkflowContextDefinition['defaultLayout'];
+  defaultLayout: WorkflowDefinition['defaultLayout'];
   sop?: {
     objective: string;
     whenToUse: string[];
@@ -102,8 +126,8 @@ interface UiMemoryMountSnapshot {
   enabled: boolean;
   actorId: string;
   sessionId: string | undefined;
-  storePolicy: NonNullable<AnyaKernelConfig['uiMemory']>['storePolicy'];
-  storeRuntime: NonNullable<AnyaKernelConfig['uiMemory']>['storeRuntime'];
+  storePolicy: NonNullable<AnyaRuntimeConfig['uiMemory']>['storePolicy'];
+  storeRuntime: NonNullable<AnyaRuntimeConfig['uiMemory']>['storeRuntime'];
   allowMemoryDowngrade: boolean | undefined;
   syncTimeoutMs: number | undefined;
   materializeProfile: boolean | undefined;
@@ -113,14 +137,16 @@ interface UiMemoryMountSnapshot {
   sqlite: string;
   indexeddb: string;
   behavior: string;
-  store: NonNullable<AnyaKernelConfig['uiMemory']>['store'];
-  runPrompt: NonNullable<AnyaKernelConfig['uiMemory']>['runPrompt'];
-  getToolManifest: NonNullable<AnyaKernelConfig['uiMemory']>['getToolManifest'];
+  store: NonNullable<AnyaRuntimeConfig['uiMemory']>['store'];
+  runPrompt: NonNullable<AnyaRuntimeConfig['uiMemory']>['runPrompt'];
+  getToolManifest: NonNullable<AnyaRuntimeConfig['uiMemory']>['getToolManifest'];
 }
 
 interface ProviderMountSnapshot {
   components: ComponentMountSnapshot[];
-  workflowContexts: WorkflowMountSnapshot[];
+  workflows: WorkflowMountSnapshot[];
+  appViews: string;
+  viewTemplates: string;
   allowedCapabilities: string[];
   storage: FileStorage | undefined;
   uiMemory: UiMemoryMountSnapshot | undefined;
@@ -128,7 +154,9 @@ interface ProviderMountSnapshot {
 
 const MOUNT_ONLY_PROVIDER_PROP_HELP: Record<MountOnlyProviderProp, string> = {
   components: 'Use `useAnyaUI().registerComponent()` / `unregisterComponent()` for runtime component changes, or remount <AnyaProvider>.',
-  workflowContexts: 'Remount <AnyaProvider> to replace the workflow registry after initialization.',
+  workflows: 'Remount <AnyaProvider> to replace the workflow registry after initialization.',
+  appViews: 'Use `useAnya().view.registerApp()` for runtime app view changes, or remount <AnyaProvider>.',
+  viewTemplates: 'Use `useAnya().view.registerTemplate()` for runtime template changes, or remount <AnyaProvider>.',
   allowedCapabilities: 'Remount <AnyaProvider> to apply a new capability allowlist.',
   storage: 'Remount <AnyaProvider> to switch persistence backends.',
   uiMemory: 'Remount <AnyaProvider> to change UI memory configuration.',
@@ -152,8 +180,8 @@ function snapshotComponents(components: AnyaComponent[]): ComponentMountSnapshot
   }));
 }
 
-function snapshotWorkflowContexts(workflowContexts: WorkflowContextDefinition[]): WorkflowMountSnapshot[] {
-  return workflowContexts.map((workflow) => ({
+function snapshotWorkflows(workflows: WorkflowDefinition[]): WorkflowMountSnapshot[] {
+  return workflows.map((workflow) => ({
     name: workflow.name,
     description: workflow.description,
     components: [...workflow.components],
@@ -178,8 +206,16 @@ function snapshotWorkflowContexts(workflowContexts: WorkflowContextDefinition[])
   }));
 }
 
+function snapshotAppViews(appViews: AppView[]): string {
+  return stableSerialize(appViews);
+}
+
+function snapshotViewTemplates(viewTemplates: ViewTemplate[]): string {
+  return stableSerialize(viewTemplates);
+}
+
 function snapshotUiBehaviorConfig(
-  behavior?: NonNullable<AnyaKernelConfig['uiMemory']>['behavior'],
+  behavior?: NonNullable<AnyaRuntimeConfig['uiMemory']>['behavior'],
 ): string {
   return stableSerialize({
     enabled: behavior?.enabled ?? false,
@@ -194,7 +230,7 @@ function snapshotUiBehaviorConfig(
   });
 }
 
-function snapshotUiMemoryConfig(uiMemory?: AnyaKernelConfig['uiMemory']): UiMemoryMountSnapshot | undefined {
+function snapshotUiMemoryConfig(uiMemory?: AnyaRuntimeConfig['uiMemory']): UiMemoryMountSnapshot | undefined {
   if (!uiMemory) return undefined;
 
   return {
@@ -220,14 +256,18 @@ function snapshotUiMemoryConfig(uiMemory?: AnyaKernelConfig['uiMemory']): UiMemo
 
 function createProviderMountSnapshot(
   components: AnyaComponent[],
-  workflowContexts: WorkflowContextDefinition[],
+  workflows: WorkflowDefinition[],
+  appViews: AppView[],
+  viewTemplates: ViewTemplate[],
   allowedCapabilities: ComponentCapability[] | undefined,
   storage: FileStorage | undefined,
-  uiMemory: AnyaKernelConfig['uiMemory'] | undefined,
+  uiMemory: AnyaRuntimeConfig['uiMemory'] | undefined,
 ): ProviderMountSnapshot {
   return {
     components: snapshotComponents(components),
-    workflowContexts: snapshotWorkflowContexts(workflowContexts),
+    workflows: snapshotWorkflows(workflows),
+    appViews: snapshotAppViews(appViews),
+    viewTemplates: snapshotViewTemplates(viewTemplates),
     allowedCapabilities: snapshotStringArray(allowedCapabilities),
     storage,
     uiMemory: snapshotUiMemoryConfig(uiMemory),
@@ -299,8 +339,14 @@ function collectChangedMountOnlyProviderProps(
   if (!areComponentSnapshotsEqual(initial.components, current.components)) {
     changed.push('components');
   }
-  if (!areWorkflowSnapshotsEqual(initial.workflowContexts, current.workflowContexts)) {
-    changed.push('workflowContexts');
+  if (!areWorkflowSnapshotsEqual(initial.workflows, current.workflows)) {
+    changed.push('workflows');
+  }
+  if (initial.appViews !== current.appViews) {
+    changed.push('appViews');
+  }
+  if (initial.viewTemplates !== current.viewTemplates) {
+    changed.push('viewTemplates');
   }
   if (!areStringArraysEqual(initial.allowedCapabilities, current.allowedCapabilities)) {
     changed.push('allowedCapabilities');
@@ -321,7 +367,11 @@ export interface AnyaProviderProps {
   /** Mount-only component definitions. Runtime changes should go through useAnyaUI(). */
   components?: AnyaComponent[];
   /** Mount-only workflow definitions. Remount the provider to replace them. */
-  workflowContexts?: WorkflowContextDefinition[];
+  workflows?: WorkflowDefinition[];
+  /** Mount-only stable app views. Remount the provider to replace them. */
+  appViews?: AppView[];
+  /** Mount-only reusable view templates. Remount the provider to replace them. */
+  viewTemplates?: ViewTemplate[];
   /** Mount-only capability allowlist enforced for component plugins */
   allowedCapabilities?: ComponentCapability[];
   /** Mount-only storage backend for memory persistence (defaults to localStorage) */
@@ -339,7 +389,7 @@ export interface AnyaProviderProps {
   /** Optional callback for completed behavior-analysis runs and replay capture. */
   onBehaviorAnalysisRun?: (capture: BehaviorAnalysisRunCapture) => void;
   /** Mount-only UI memory pipeline configuration. Remount to change it. */
-  uiMemory?: AnyaKernelConfig['uiMemory'];
+  uiMemory?: AnyaRuntimeConfig['uiMemory'];
   children: ReactNode;
 }
 
@@ -347,7 +397,9 @@ export interface AnyaProviderProps {
 
 export function AnyaProvider({
   components = [],
-  workflowContexts = [],
+  workflows = [],
+  appViews = [],
+  viewTemplates = [],
   allowedCapabilities,
   storage,
   onTelemetryEvent,
@@ -359,7 +411,7 @@ export function AnyaProvider({
   uiMemory,
   children,
 }: AnyaProviderProps) {
-  const kernelRef = useRef<AnyaKernel | null>(null);
+  const runtimeRef = useRef<AnyaRuntime | null>(null);
   const componentMapRef = useRef<Map<string, ComponentType<any>>>(new Map());
   const pluginMapRef = useRef<Map<string, AnyaComponent>>(new Map());
   const initialMountSnapshotRef = useRef<ProviderMountSnapshot | null>(null);
@@ -367,7 +419,9 @@ export function AnyaProvider({
 
   const currentMountSnapshot = createProviderMountSnapshot(
     components,
-    workflowContexts,
+    workflows,
+    appViews,
+    viewTemplates,
     allowedCapabilities,
     storage,
     uiMemory,
@@ -390,7 +444,7 @@ export function AnyaProvider({
     }
   }, []);
 
-  if (!kernelRef.current) {
+  if (!runtimeRef.current) {
     const componentDefs = components.map((component) => ({
       name: component.name,
       description: component.description,
@@ -400,9 +454,11 @@ export function AnyaProvider({
       capabilities: component.capabilities,
     }));
 
-    kernelRef.current = createAnyaKernel({
+    runtimeRef.current = createAnyaRuntime({
       components: componentDefs,
-      workflowContexts,
+      workflows,
+      appViews,
+      viewTemplates,
       allowedCapabilities,
       storage,
       onPersistError: (error) => {
@@ -426,7 +482,7 @@ export function AnyaProvider({
     pluginMapRef.current = pluginMap;
   }
 
-  const kernel = kernelRef.current!;
+  const runtimeServices = runtimeRef.current!;
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   const normalizeThemeTokenKey = React.useCallback((key: string): string => {
@@ -450,9 +506,9 @@ export function AnyaProvider({
   }, [normalizeThemeTokenKey]);
 
   const applyThemeUpdate = React.useCallback(async (update: Record<string, string>) => {
-    const merged = await saveThemeTokens(kernel.storage, update);
+    const merged = await saveThemeTokens(runtimeServices.storage, update);
     injectCSSVars(merged);
-  }, [injectCSSVars, kernel.storage]);
+  }, [injectCSSVars, runtimeServices.storage]);
 
   React.useEffect(() => {
     const initialSnapshot = initialMountSnapshotRef.current;
@@ -469,14 +525,14 @@ export function AnyaProvider({
   }, [currentMountSnapshot]);
 
   React.useEffect(() => {
-    kernel.uiBehaviorPipeline?.setOnCapture(onBehaviorAnalysisRun);
-  }, [kernel.uiBehaviorPipeline, onBehaviorAnalysisRun]);
+    runtimeServices.uiBehaviorPipeline?.setOnCapture(onBehaviorAnalysisRun);
+  }, [runtimeServices.uiBehaviorPipeline, onBehaviorAnalysisRun]);
 
   React.useEffect(() => {
     const effects: RuntimeEffect[] = createDefaultRuntimeEffects({
-      memory: kernel.memory,
-      profile: kernel.profile,
-      presentation: kernel.presentation,
+      memory: runtimeServices.sessionMemory,
+      profile: runtimeServices.userProfile,
+      viewEngine: runtimeServices.viewEngine,
       onThemeUpdated: applyThemeUpdate,
       onRuntimeEvent,
     });
@@ -495,14 +551,14 @@ export function AnyaProvider({
       }));
     }
 
-    kernel.runtime.replaceEffects(effects);
+    runtimeServices.runtime.replaceEffects(effects);
   }, [
     applyThemeUpdate,
     failureBudgetPolicy,
-    kernel.memory,
-    kernel.presentation,
-    kernel.profile,
-    kernel.runtime,
+    runtimeServices.runtime,
+    runtimeServices.sessionMemory,
+    runtimeServices.userProfile,
+    runtimeServices.viewEngine,
     onFailureBudgetSignal,
     onRuntimeEvent,
     onTelemetryEvent,
@@ -510,15 +566,15 @@ export function AnyaProvider({
   ]);
 
   React.useEffect(() => {
-    const unsubscribe = kernel.workflowContexts.onChange(() => {
-      const workflows = kernel.workflowContexts.list();
-      kernel.presentation.setContext({
-        availableWorkflowContexts: workflows,
+    const unsubscribe = runtimeServices.workflowRegistry.onChange(() => {
+      const workflows = runtimeServices.workflowRegistry.list();
+      runtimeServices.viewEngine.setContext({
+        availableWorkflows: workflows,
       });
     });
 
     return unsubscribe;
-  }, [kernel.presentation, kernel.workflowContexts]);
+  }, [runtimeServices.viewEngine, runtimeServices.workflowRegistry]);
 
   React.useEffect(() => {
     for (const component of pluginMapRef.current.values()) {
@@ -536,24 +592,24 @@ export function AnyaProvider({
     let cancelled = false;
 
     void (async () => {
-      const { themeTokens } = await kernel.hydrate();
+      const { themeTokens } = await runtimeServices.hydrate();
       if (cancelled) return;
 
       injectCSSVars(themeTokens);
 
-      const ctx = kernel.memory.getContext();
-      kernel.runtime.dispatch(createRuntimeEvent('memory.hydrated', {
+      const ctx = runtimeServices.sessionMemory.getContext();
+      runtimeServices.runtime.dispatch(createRuntimeEvent('memory.hydrated', {
         state: {
           session: {
             userIntent: ctx.userIntent || undefined,
             workflowContext: ctx.workflowContext,
           },
           ui: {
-            spec: kernel.memory.getCurrentSpec(),
+            spec: runtimeServices.sessionMemory.getCurrentSpec(),
             schemaVersion: 1,
           },
           memory: {
-            interactions: [...kernel.memory.getInteractions()],
+            interactions: [...runtimeServices.sessionMemory.getInteractions()],
           },
           theme: {
             tokens: themeTokens,
@@ -565,22 +621,25 @@ export function AnyaProvider({
     return () => {
       cancelled = true;
     };
-  }, [injectCSSVars, kernel]);
+  }, [injectCSSVars, runtimeServices]);
 
   const value = useMemo<AnyaContextValue>(
     () => ({
-      catalog: kernel.catalog,
-      workflowContexts: kernel.workflowContexts,
-      memory: kernel.memory,
-      profile: kernel.profile,
-      orchestrator: kernel.orchestrator,
-      runtime: kernel.runtime,
-      presentation: kernel.presentation,
+      catalog: runtimeServices.catalog,
+      workflowRegistry: runtimeServices.workflowRegistry,
+      viewRegistry: runtimeServices.viewRegistry,
+      sessionMemory: runtimeServices.sessionMemory,
+      userProfile: runtimeServices.userProfile,
+      agentBridge: runtimeServices.agentBridge,
+      runtime: runtimeServices.runtime,
+      viewEngine: runtimeServices.viewEngine,
+      stateGraph: runtimeServices.stateGraph,
+      viewRecommendations: runtimeServices.viewRecommendations,
       componentMap: componentMapRef.current,
       pluginMap: pluginMapRef.current,
       applyThemeUpdate,
     }),
-    [applyThemeUpdate, kernel]
+    [applyThemeUpdate, runtimeServices]
   );
 
   return (

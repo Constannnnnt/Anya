@@ -31,6 +31,8 @@
     "dist-cjs/**/*.js",
     "dist-cjs/**/*.d.cts",
     "dist-cjs/package.json",
+    "experimental.js",
+    "experimental.d.ts",
     "README.md",
     "LICENSE*"
   ],
@@ -60,12 +62,23 @@
       },
       "default": "./dist/experimental.js"
     },
+    "./internal": {
+      "import": {
+        "types": "./dist/internal.d.ts",
+        "default": "./dist/internal.js"
+      },
+      "require": {
+        "types": "./dist-cjs/internal.d.cts",
+        "default": "./dist-cjs/internal.js"
+      },
+      "default": "./dist/internal.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "node scripts/clean-build.mjs && tsc && tsc -p tsconfig.cjs.json && node scripts/postbuild.mjs",
-    "dev": "tsc --watch",
-    "lint": "tsc --noEmit",
+    "build": "node scripts/clean-build.mjs && tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node scripts/postbuild.mjs",
+    "dev": "tsc -p tsconfig.json --watch",
+    "lint": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --pool=threads",
     "bench": "npm run build && node bench/optimistic-update.bench.mjs",
     "bench:memory-store-read": "npm run build && node bench/memory-store-read.bench.mjs",

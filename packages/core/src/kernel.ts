@@ -1,6 +1,6 @@
 /**
- * Kernel composition root.
- * Wires catalog, workflow contexts, memory, runtime, and presentation engine
+ * Runtime composition root.
+ * Wires catalog, workflow registry, session memory, runtime, and view engine
  * so hosts can bootstrap Anya with one call.
  */
 import {
@@ -24,10 +24,18 @@ import {
   type RuntimeReducer,
   type RuntimeStore,
 } from './runtime';
-import { createPresentationEngine, type PresentationEngine } from './presentation/uiEngine';
-import { extractBindingsFromSpec } from './presentation/uiBuilder';
+import {
+  ViewRegistry,
+  type AppView,
+  type ViewTemplate,
+} from './views/registry';
+import type { ActionBinding } from './views';
+import type { ViewMetadata } from './types';
+import { createViewEngine, type ViewEngine } from './views/engine';
+import { extractActionBindings } from './views/planner';
 import { loadThemeTokens } from './theme';
 import type { RuntimeEventSource } from './runtime/events';
+import type { StateGraph } from './state';
 import type { UIRenderSpec } from './types';
 import { getLogger } from './logging';
 import type { MemoryStore } from './memory/ui/store';
@@ -55,10 +63,16 @@ import {
 import type { IndexedDbMemoryStoreOptions } from './memory/ui/indexedDbAdapter';
 import type { SQLiteMemoryStoreOptions } from './memory/ui/sqliteAdapter';
 import { applyDecodedSpec, type ApplySpecResult } from './specLifecycle';
+import {
+  ViewRecommendationEngine,
+  type ViewRecommendationEngineConfig,
+} from './viewRecommendations';
 
-export interface AnyaKernelConfig {
+export interface AnyaRuntimeConfig {
   components?: ComponentDefinition[];
-  workflowContexts?: SkillDefinition[];
+  workflows?: SkillDefinition[];
+  appViews?: AppView[];
+  viewTemplates?: ViewTemplate[];
   allowedCapabilities?: ComponentCapability[];
   storage?: FileStorage;
   sessionTransport?: AgentSessionTransport;
@@ -72,7 +86,7 @@ export interface AnyaKernelConfig {
     maxDispatchDepth?: number;
     dedupeNestedEventIds?: boolean;
   };
-  presentation?: {
+  views?: {
     allowedToolIds?: string[];
     maxExecutionHistory?: number;
   };
@@ -114,19 +128,27 @@ export interface HydrationResult {
   themeTokens: Record<string, string>;
 }
 
-/** Fully wired runtime services returned by createAnyaKernel(). */
-export interface AnyaKernel {
+/** Fully wired runtime services returned by createAnyaRuntime(). */
+export interface AnyaRuntime {
   catalog: ComponentCatalog;
-  workflowContexts: SkillRegistry;
-  memory: ContextMemoryManager;
-  profile: AdaptiveProfile;
-  orchestrator: DynamicOrchestrator;
+  workflowRegistry: SkillRegistry;
+  viewRegistry: ViewRegistry;
+  sessionMemory: ContextMemoryManager;
+  userProfile: AdaptiveProfile;
+  agentBridge: DynamicOrchestrator;
   runtime: RuntimeStore;
-  presentation: PresentationEngine;
+  viewEngine: ViewEngine;
+  stateGraph: StateGraph;
+  viewRecommendations?: ViewRecommendationEngine;
   storage: FileStorage;
-  applySpec: (
+  applyView: (
     spec: UIRenderSpec,
-    options?: { source?: RuntimeEventSource; userIntent?: string }
+    options?: {
+      source?: RuntimeEventSource;
+      userIntent?: string;
+      view?: ViewMetadata;
+      bindings?: ActionBinding[];
+    }
   ) => ApplySpecResult;
   hydrate: () => Promise<HydrationResult>;
   /** Available when uiMemory.enabled is true. */
@@ -144,8 +166,8 @@ function registerComponents(catalog: ComponentCatalog, components: ComponentDefi
   }
 }
 
-function registerWorkflowContexts(registry: SkillRegistry, workflowContexts: SkillDefinition[]): void {
-  for (const workflow of workflowContexts) {
+function registerWorkflows(registry: SkillRegistry, workflows: SkillDefinition[]): void {
+  for (const workflow of workflows) {
     registry.register(workflow);
   }
 }
@@ -168,7 +190,7 @@ function createDefaultStorage(): FileStorage {
  * Composition root for core runtime services.
  * Host integrations can use this to avoid wiring every dependency manually.
  */
-export function createAnyaKernel(config?: AnyaKernelConfig): AnyaKernel {
+export function createAnyaRuntime(config?: AnyaRuntimeConfig): AnyaRuntime {
   const storage = config?.storage ?? createDefaultStorage();
 
   const catalog = new ComponentCatalog({
@@ -176,20 +198,27 @@ export function createAnyaKernel(config?: AnyaKernelConfig): AnyaKernel {
   });
   registerComponents(catalog, config?.components ?? []);
 
-  const workflowContexts = new SkillRegistry();
-  registerWorkflowContexts(
-    workflowContexts,
-    config?.workflowContexts ?? []
+  const workflowRegistry = new SkillRegistry();
+  registerWorkflows(
+    workflowRegistry,
+    config?.workflows ?? []
   );
+  const viewRegistry = new ViewRegistry();
+  for (const appView of config?.appViews ?? []) {
+    viewRegistry.registerAppView(appView);
+  }
+  for (const viewTemplate of config?.viewTemplates ?? []) {
+    viewRegistry.registerTemplate(viewTemplate);
+  }
 
-  const memory = new ContextMemoryManager({
+  const sessionMemory = new ContextMemoryManager({
     storage,
     maxInteractions: config?.maxInteractions,
     maxReasoningTraces: config?.maxReasoningTraces,
     onPersistError: config?.onPersistError,
   });
 
-  const profile = new AdaptiveProfile(storage);
+  const userProfile = new AdaptiveProfile(storage);
 
   // ── Opt-in UI memory pipeline ──────────────────────────────────────
   let uiMemoryStore: MemoryStore | undefined;
@@ -199,6 +228,7 @@ export function createAnyaKernel(config?: AnyaKernelConfig): AnyaKernel {
   let uiMemoryPipeline: UiMemoryPipeline | undefined;
   let uiBehaviorStore: BehaviorStore | undefined;
   let uiBehaviorPipeline: UiBehaviorPipeline | undefined;
+  let viewRecommendations: ViewRecommendationEngine | undefined;
 
   if (config?.uiMemory?.enabled) {
     if (config.uiMemory.store) {
@@ -217,7 +247,7 @@ export function createAnyaKernel(config?: AnyaKernelConfig): AnyaKernel {
       uiMemoryStore = new InMemoryMemoryStore();
     }
     getLogger().info(
-      `[AnyaKernel] UI memory store initialized: ${uiMemoryStore.constructor?.name ?? 'UnknownStore'}`
+      `[AnyaRuntime] UI memory store initialized: ${uiMemoryStore.constructor?.name ?? 'UnknownStore'}`
     );
     uiTriggerManager = new TriggerManager(config.uiMemory.triggerConfig);
     const sessionId = config.uiMemory.sessionId ?? 'default';
@@ -237,19 +267,33 @@ export function createAnyaKernel(config?: AnyaKernelConfig): AnyaKernel {
         runPrompt: config.uiMemory.runPrompt,
         windowConfig: config.uiMemory.windowConfig,
         syncTimeoutMs: config.uiMemory.syncTimeoutMs,
-        profile,
+        profile: userProfile,
         materializeProfile: config.uiMemory.materializeProfile ?? true,
         getToolManifest: config.uiMemory.getToolManifest,
       });
       uiMemoryPipeline.start();
     } else {
       getLogger().info(
-        '[AnyaKernel] uiMemory is enabled without runPrompt; event collection is active but extraction pipeline is disabled.'
+        '[AnyaRuntime] uiMemory is enabled without runPrompt; event collection is active but extraction pipeline is disabled.'
       );
     }
 
     if (config.uiMemory.behavior?.enabled) {
       uiBehaviorStore = config.uiMemory.behavior.store ?? new InMemoryBehaviorStore();
+      const recommendationConfig: ViewRecommendationEngineConfig = {
+        actorId: config.uiMemory.actorId,
+        behaviorStore: uiBehaviorStore,
+        policy: config.uiMemory.behavior.interpreterPolicy ?? DEFAULT_FINDING_INTERPRETER_POLICY,
+        ranking: {
+          max: config.uiMemory.retrievalConfig?.maxBehaviorAdaptations,
+          confidenceWeight: config.uiMemory.retrievalConfig?.confidenceWeight,
+          recencyWeight: config.uiMemory.retrievalConfig?.recencyWeight,
+          supportWeight: config.uiMemory.retrievalConfig?.supportWeight,
+          severityWeight: config.uiMemory.retrievalConfig?.behaviorSeverityWeight,
+          contextWeight: config.uiMemory.retrievalConfig?.behaviorContextWeight,
+        },
+      };
+      viewRecommendations = new ViewRecommendationEngine(recommendationConfig);
       const behaviorConfig: UiBehaviorPipelineConfig = {
         actorId: config.uiMemory.actorId,
         eventStore: uiMemoryStore,
@@ -269,11 +313,11 @@ export function createAnyaKernel(config?: AnyaKernelConfig): AnyaKernel {
     }
   }
 
-  const orchestrator = new DynamicOrchestrator({
+  const agentBridge = new DynamicOrchestrator({
     catalog,
-    skills: workflowContexts,
-    memory,
-    profile,
+    skills: workflowRegistry,
+    memory: sessionMemory,
+    profile: userProfile,
     sessionTransport: config?.sessionTransport,
     ...(uiMemoryStore && uiRetrieval && config?.uiMemory ? {
       uiMemoryStore,
@@ -298,30 +342,30 @@ export function createAnyaKernel(config?: AnyaKernelConfig): AnyaKernel {
   if (uiEventCollector) {
     runtime.subscribeEvent('*', (event) => {
       uiEventCollector!.collect(event).catch((err) => {
-        getLogger().warn('[AnyaKernel] UI memory event collection failed:', err);
+        getLogger().warn('[AnyaRuntime] UI memory event collection failed:', err);
       });
     });
   }
 
-  const memoryContext = memory.getContext();
-  const presentation = createPresentationEngine({
-    allowedToolIds: config?.presentation?.allowedToolIds,
-    maxExecutionHistory: config?.presentation?.maxExecutionHistory,
+  const memoryContext = sessionMemory.getContext();
+  const viewEngine = createViewEngine({
+    allowedToolIds: config?.views?.allowedToolIds,
+    maxExecutionHistory: config?.views?.maxExecutionHistory,
     initialContext: {
-      currentSpec: memory.getCurrentSpec(),
-      sessionHistory: [...memory.getInteractions()],
+      currentSpec: sessionMemory.getCurrentSpec(),
+      sessionHistory: [...sessionMemory.getInteractions()],
       workflowContext: memoryContext.workflowContext,
-      availableWorkflowContexts: workflowContexts.list(),
+      availableWorkflows: workflowRegistry.list(),
     },
   });
 
-  const applySpec: AnyaKernel['applySpec'] = (spec, options) => {
+  const applyView: AnyaRuntime['applyView'] = (spec, options) => {
     const result = applyDecodedSpec(
       spec,
       {
-        memory,
-        profile,
-        presentation,
+        memory: sessionMemory,
+        profile: userProfile,
+        viewEngine,
       },
       options
     );
@@ -348,25 +392,25 @@ export function createAnyaKernel(config?: AnyaKernelConfig): AnyaKernel {
 
   const hydrate = async (): Promise<HydrationResult> => {
     const [, , themeTokens] = await Promise.all([
-      profile.load(),
-      memory.loadFromDisk(),
+      userProfile.load(),
+      sessionMemory.loadFromDisk(),
       loadThemeTokens(storage),
     ]);
 
-    const context = memory.getContext();
-    const currentSpec = memory.getCurrentSpec();
+    const context = sessionMemory.getContext();
+    const currentSpec = sessionMemory.getCurrentSpec();
     const restoredBindings = currentSpec
-      ? extractBindingsFromSpec(currentSpec).bindings
+      ? extractActionBindings(currentSpec).bindings
       : [];
-    presentation.setContext({
+    viewEngine.setContext({
       workflowContext: context.workflowContext,
-      availableWorkflowContexts: workflowContexts.list(),
+      availableWorkflows: workflowRegistry.list(),
       candidateSpec: currentSpec,
       candidateBindings: restoredBindings,
       currentSpec,
       currentBindings: restoredBindings,
-      sessionHistory: [...memory.getInteractions()],
-      persistentProfile: profile.getContent(),
+      sessionHistory: [...sessionMemory.getInteractions()],
+      persistentProfile: userProfile.getContent(),
     });
 
     return { themeTokens };
@@ -374,14 +418,17 @@ export function createAnyaKernel(config?: AnyaKernelConfig): AnyaKernel {
 
   return {
     catalog,
-    workflowContexts,
-    memory,
-    profile,
-    orchestrator,
+    workflowRegistry,
+    viewRegistry,
+    sessionMemory,
+    userProfile,
+    agentBridge,
     runtime,
-    presentation,
+    viewEngine,
+    stateGraph: viewEngine.stateGraph,
+    viewRecommendations,
     storage,
-    applySpec,
+    applyView,
     hydrate,
     uiMemoryStore,
     uiEventCollector,

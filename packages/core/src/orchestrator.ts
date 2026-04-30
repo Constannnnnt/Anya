@@ -16,6 +16,7 @@ import { buildSystemPrompt, buildResponseFormatBlock, buildSelectionPrompt as bu
 import { decode } from './translator';
 import {
   type AgentSessionRun,
+  type SessionArtifact,
   type AgentSessionTransport,
 } from './session';
 import type { MemoryStore } from './memory/ui/store';
@@ -134,6 +135,8 @@ export class DynamicOrchestrator {
     messages: AgentMessage[];
     promptOptions?: PromptOptions;
     transport?: AgentSessionTransport;
+    currentArtifacts?: SessionArtifact[];
+    currentViewId?: string;
   }): Promise<AgentSessionRun> {
     const uiMemoryPriors = await this.getUiMemoryPriors();
     const sessionTransport = input.transport ?? this.sessionTransport;
@@ -153,6 +156,8 @@ export class DynamicOrchestrator {
         timestamp: message.timestamp,
       })),
       memoryContext: this.memory.toLLMContext(),
+      currentArtifacts: input.currentArtifacts,
+      currentViewId: input.currentViewId,
     });
   }
 

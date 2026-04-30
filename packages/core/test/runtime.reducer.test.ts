@@ -64,10 +64,11 @@ describe('runtimeReducer', () => {
   it('treats ui.presented and interaction.measured as observational passthrough events', () => {
     const base = createInitialRuntimeState();
     const presented = createRuntimeEvent('ui.presented', {
-      surface: {
-        uiId: 'ui-123',
-        surfaceHash: '1234abcd',
+      view: {
+        id: 'ui-123',
+        kind: 'generated',
         layout: 'stack',
+        fingerprint: '1234abcd',
         componentCount: 1,
         interactiveCount: 0,
         actionableCount: 0,

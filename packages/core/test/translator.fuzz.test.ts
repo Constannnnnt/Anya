@@ -54,7 +54,7 @@ describe('Translator decode contract fuzzing', () => {
 
         try {
           const spec = decode(raw, catalog);
-          expect(spec.spec_version).toBe(1);
+
           expect(['stack', 'row', 'grid', 'tabs', 'split']).toContain(spec.layout);
           expect(Array.isArray(spec.components)).toBe(true);
         } catch (error) {

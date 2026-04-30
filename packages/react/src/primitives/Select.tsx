@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { defineComponent } from '../defineComponent';
 import {
     measureSelectionTarget,
+    splitDynamicInteractions,
     useSyncedState,
     type PrimitiveBehaviorProps,
     type PrimitiveRenderProps,
@@ -31,12 +32,13 @@ export const Select = defineComponent({
     tags: ['form', 'input', 'select'],
     render: ({ id, props, onInteraction }: PrimitiveRenderProps<SelectProps>) => {
         const [val, setVal] = useSyncedState(props.value, '');
+        const { containerInteractions } = splitDynamicInteractions(props.dynamicInteractions);
         return (
             <div
                 id={id}
                 className={`anya-select-wrapper ${props.className || ''}`}
                 style={props.style}
-                {...props.dynamicInteractions}
+                {...containerInteractions}
             >
                 {props.label && <label className="anya-select-label" htmlFor={`${id}-select`}>{props.label}</label>}
                 <select
@@ -48,6 +50,7 @@ export const Select = defineComponent({
                         const newVal = e.target.value;
                         setVal(newVal);
                         onInteraction('value_change', {
+                            trigger: 'onChange',
                             propName: 'value',
                             previousValue: val,
                             newValue: newVal,

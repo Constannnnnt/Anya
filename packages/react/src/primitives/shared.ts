@@ -10,7 +10,7 @@ import { measureElementTarget, measurePointerTarget } from '../behavior/telemetr
 
 export const DRAG_HOLD_MS = 250;
 
-export type InteractionTrigger = 'onClick' | 'onDoubleClick' | 'onMouseEnter' | 'onMouseLeave';
+export type InteractionTrigger = 'onClick' | 'onDoubleClick' | 'onMouseEnter' | 'onMouseLeave' | 'onChange';
 export type DynamicInteractions = Partial<Record<InteractionTrigger, (event: React.SyntheticEvent) => void>>;
 
 const ALLOWED_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:', 'data:', 'blob:']);
@@ -195,7 +195,24 @@ export function useSyncedState<T>(
         setValue(resolvedValue);
     }, [resolvedValue]);
 
-    return [value, setValue];
+  return [value, setValue];
+}
+
+export function splitDynamicInteractions(
+    dynamicInteractions?: DynamicInteractions,
+): {
+    containerInteractions: DynamicInteractions;
+} {
+    if (!dynamicInteractions) {
+        return {
+            containerInteractions: {},
+        };
+    }
+
+    const { onChange, ...containerInteractions } = dynamicInteractions;
+    return {
+        containerInteractions,
+    };
 }
 
 export function toCssLength(value?: number | string): string | undefined {

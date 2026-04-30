@@ -9,16 +9,19 @@ export type {
   InteractionModality,
   InteractionAction,
   InteractionTrigger,
-  UIInteractionMeasurement,
-  UIInteractionMeasurementHint,
-  UIInteractionRecord,
-  UIPresentedSurface,
+  UIInteractionMeasurement as InteractionMeasurement,
+  UIInteractionMeasurementHint as InteractionMeasurementHint,
+  UIInteractionRecord as InteractionEvent,
+  UIPresentedView as PresentedView,
+  ViewMetadata,
+  ViewOrigin,
   ActiveContext,
   ElementHistory,
   ReasoningTrace,
-  UIRenderSpec,
-  UIComponentSpec,
-  UIInteractionDefinition,
+  UIRenderSpec as ViewSpec,
+  UIComponentSpec as ViewNode,
+  UIBindTarget as ViewBindingTarget,
+  UIInteractionDefinition as InteractionSpec,
   ThemeTokens,
   AgentState,
   AgentMessage,
@@ -31,9 +34,19 @@ export type { FileStorage } from './storage/interface';
 export { InMemoryStorage } from './storage/memory';
 export { LocalStorageAdapter } from './storage/localStorage';
 
+// ─── Shared State ────────────────────────────────────────────────────────
+export type { StateGraph, StateMutationOptions } from './state';
+
 // ─── Memory ──────────────────────────────────────────────────────────────
-export { ContextMemoryManager } from './memory/context';
-export { AdaptiveProfile } from './memory/profile';
+export {
+  ContextMemoryManager as SessionMemory,
+} from './memory/context';
+export {
+  AdaptiveProfile as UserProfile,
+} from './memory/profile';
+export type {
+  BehaviorAnalysisRunCapture,
+} from './memory/ui/behavior';
 
 // ─── Registry ────────────────────────────────────────────────────────────
 export {
@@ -43,9 +56,9 @@ export {
   type ComponentDefinition,
 } from './registry/catalog';
 export {
-  SkillRegistry as WorkflowContextRegistry,
+  SkillRegistry as WorkflowRegistry,
   type SkillChecklistItem as WorkflowChecklistItem,
-  type SkillDefinition as WorkflowContextDefinition,
+  type SkillDefinition as WorkflowDefinition,
   type SkillSOP as WorkflowSOP,
 } from './registry/skills';
 
@@ -54,11 +67,17 @@ export { buildSystemPrompt, buildResponseFormatBlock, buildSelectionPrompt, pars
 
 export {
   agentSessionReducer,
+  collectAgentSessionState,
   collectAgentSessionEvents,
   collectArtifactsFromSessionEvents,
+  getViewBindings,
   createAgentSessionStore,
   createInitialAgentSessionState,
   createSessionArtifact,
+  getViewDescriptor,
+  getViewSpec,
+  isViewArtifact,
+  resolvePrimaryViewArtifact,
 } from './session';
 export type {
   AgentSessionController,
@@ -78,6 +97,7 @@ export type {
   ArtifactKind,
   ArtifactRegion,
   ArtifactUpsertedEvent,
+  CanonicalViewArtifact,
   ErrorArtifact,
   ErrorArtifactPayload,
   MessageArtifact,
@@ -97,10 +117,10 @@ export type {
   SourceBundleArtifact,
   SourceBundleArtifactPayload,
   SourceRef,
-  SurfaceArtifact,
-  SurfaceArtifactPayload,
-  SurfaceDescriptor,
-  SurfaceKind,
+  ViewArtifact,
+  ViewArtifactPayload,
+  ViewDescriptor,
+  ViewFormat,
   TextDeltaEvent,
   ToolCallArtifact,
   ToolCallArtifactPayload,
@@ -108,25 +128,63 @@ export type {
   ToolResultArtifactPayload,
 } from './session';
 
+// ─── View Recommendations ───────────────────────────────────────────────
+export {
+  buildViewRecommendationUpdateRequest,
+  ViewRecommendationEngine,
+} from './viewRecommendations';
+export type {
+  BuildViewRecommendationUpdateRequestInput,
+  ViewRecommendation,
+  ViewRecommendationEngineConfig,
+  ViewRecommendationQuery,
+  ViewRecommendationRanking,
+  ViewRecommendationTarget,
+  ViewRecommendationUpdateRequest,
+} from './viewRecommendations';
+
+// ─── View Changes ───────────────────────────────────────────────────────
+export {
+  buildViewChangeAuditRecord,
+  createAppViewFromDraft,
+  createTemplateFromDraft,
+  createViewChangeDraft,
+  getViewChangePreview,
+  reviewViewChangeDraft,
+} from './viewChanges';
+export type {
+  AnyViewChangeDraft,
+  CreateAppViewFromDraftInput,
+  CreateTemplateFromDraftInput,
+  CreateViewChangeDraftInput,
+  ReviewViewChangeDraftInput,
+  ReviewedViewChangeDraft,
+  ViewChangeAuditRecord,
+  ViewChangeDraft,
+  ViewChangeDraftSource,
+  ViewChangeImpact,
+  ViewChangePreview,
+  ViewChangeReview,
+  ViewChangeSnapshot,
+} from './viewChanges';
+
 // ─── Logging ─────────────────────────────────────────────────────────────
 export type { Logger } from './logging';
 export { consoleLogger, silentLogger, getLogger, setLogger } from './logging';
 
 // ─── Orchestrator ────────────────────────────────────────────────────────
-export { DynamicOrchestrator, createOrchestrator } from './orchestrator';
-export type { OrchestratorConfig } from './orchestrator';
-export { applyDecodedSpec } from './specLifecycle';
+export {
+  DynamicOrchestrator as AgentBridge,
+  createOrchestrator as createAgentBridge,
+} from './orchestrator';
+export type { OrchestratorConfig as AgentBridgeConfig } from './orchestrator';
+export { createAnyaRuntime } from './kernel';
 export type {
-  ApplySpecDependencies,
-  ApplySpecOptions,
-  ApplySpecResult,
-} from './specLifecycle';
-export { createAnyaKernel } from './kernel';
-export type {
-  AnyaKernel,
-  AnyaKernelConfig,
+  AnyaRuntime,
+  AnyaRuntimeConfig,
   HydrationResult,
 } from './kernel';
+
 
 // ─── Translator ──────────────────────────────────────────────────────────
 export {
@@ -141,43 +199,9 @@ export {
 export { applyOptimisticUpdate } from './utils';
 export { nextGeneratedId, resetIdGenerator, setIdGenerator } from './id';
 
-// ─── Quality (Phase 6) ───────────────────────────────────────────────────
-export {
-  DEFAULT_BENCHMARK_REGRESSION_POLICY,
-  DEFAULT_QUALITY_GATE_POLICY,
-  evaluateBenchmarkRegression,
-  evaluateQualityGates,
-  summarizeBindingExecutionHistory,
-  summarizeRuntimeTelemetry,
-} from './quality';
-export type {
-  BenchmarkRegressionCheck,
-  BenchmarkRegressionEvaluation,
-  BenchmarkRegressionPolicy,
-  BenchmarkThroughputMetrics,
-  PresentationExecutionSummary,
-  QualityCheckStatus,
-  QualityGateCheck,
-  QualityGateEvaluation,
-  QualityGateInput,
-  QualityGatePolicy,
-  RuntimeTelemetrySummary,
-} from './quality';
 
-// ─── Spec Versioning ─────────────────────────────────────────────────────
-export {
-  CURRENT_UI_SPEC_VERSION,
-  normalizeUISpecEnvelope,
-  withSpecVersion,
-} from './spec';
-export {
-  CURRENT_MEMORY_SNAPSHOT_VERSION,
-  MemorySnapshotSchema,
-  normalizeMemorySnapshot,
-  parseMemorySnapshot,
-  serializeMemorySnapshot,
-} from './memory/snapshot';
-export type { MemorySnapshot } from './memory/snapshot';
+
+
 
 // ─── Runtime (Phase 1 Foundation) ────────────────────────────────────────
 export {
@@ -194,13 +218,6 @@ export type {
   RuntimeEffectContext,
   RuntimeEffectErrorHandler,
   InteractionMeasuredEvent,
-  RuntimeFailureBudgetExceeded,
-  RuntimeFailureBudgetOptions,
-  RuntimeFailureBudgetPolicy,
-  RuntimeFailureBudgetRecovered,
-  RuntimeFailureBudgetSignal,
-  RuntimeFailureBudgetSnapshot,
-  RuntimeFailureOutcome,
   CreateDefaultRuntimeEffectsOptions,
   RuntimeEventListener,
   RuntimeEventPattern,
@@ -210,97 +227,76 @@ export type {
   RuntimeReducer,
   RuntimeSessionState,
   RuntimeState,
-  RuntimeTelemetryEvent,
-  RuntimeTelemetryOptions,
-  RuntimeTelemetrySink,
   RuntimeStore,
   UiPresentedEvent,
 } from './runtime';
-export {
-  createRuntimeFailureBudgetEffect,
-  createRuntimeTelemetryEffect,
-} from './runtime';
 
-// ─── Presentation (v0) ───────────────────────────────────────────────────
+// ─── Views ───────────────────────────────────────────────────────────────
 export {
-  CURRENT_PRESENTATION_PLAN_VERSION,
-  applyLocalUIUpdates,
-  applyPresentationOperations,
-  applyPresentationPlan,
-  createPresentationEngine,
-  planUIUpdate,
-  BindingActionExecutor,
-  DEFAULT_PROJECTION_COMPONENT_TYPES,
-  executeBindingAction,
-  extractBindingsFromSpec,
-  planPresentation,
-  buildProjectionFromContext,
+  CURRENT_VIEW_PLAN_VERSION,
+  applyLocalViewChanges,
+  applyViewChanges,
+  applyViewPlan,
+  createViewEngine,
+  planView,
+  buildViewFromState,
+  extractActionBindings,
+  planViewFromContext,
+  toViewContext,
+  ToolRunner,
+  ActionCommandRunner,
+  runActionCommand,
   resolveBindingValue,
-  setComponentProp,
-  toPresentationContext,
-  ToolRuntime,
-} from './presentation';
+  ViewRegistry,
+  toViewMetadata,
+} from './views';
 export type {
-  BindingAction,
-  BindingActionExecutionInput,
-  BindingActionHandler,
-  BindingActionHandlerContext,
-  BindingExecutionContext,
-  BindingExecutionOutcome,
-  BindingExecutionRecord,
-  BindingValueExpression,
-  BuildProjectionFromContextOptions,
-  DataNode,
-  DataNodeKind,
-  ContextEnvelope,
-  ProjectionComponentTypes,
-  LocalPatchOperation,
-  PresentationContext,
-  PresentationEngine,
-  PresentationPlanningPolicy,
-  PresentationPlannerStrategyName,
-  PresentationMode,
-  PresentationOperation,
-  PresentationPlan,
-  PresentationPlanApplicationResult,
-  PresentationPlanRequest,
-  PresentationSkill,
-  PresentationRequest,
-  PresentationResult,
-  PresentationProjection,
-  PresentationState,
-  ToolCallPolicy,
-  ToolSchemaContract,
-  ToolSchemaValidationFailure,
-  ToolSchemaValidationResult,
-  ToolSchemaValidationSuccess,
-  ToolExecutionMode,
-  ToolExecutionLane,
-  ToolHandler,
-  ToolManifest,
-  ToolRiskLevel,
-  UIBinding,
-} from './presentation';
+  ActionCommand,
+  ActionCommandHandler,
+  ActionCommandHandlerContext,
+  ActionCommandInput,
+  ActionExecutionContext,
+  ActionExecutionOutcome,
+  ActionResult,
+  ValueExpression,
+  StateNode,
+  StateNodeKind,
+  ViewComponentSlots,
+  LocalViewChange,
+  ViewInputs,
+  StateContext,
+  AppView,
+  CreateViewFromTemplateOptions,
+  PromoteViewToTemplateInput,
+  ResolvedView,
+  ViewDraft,
+  ViewTemplate,
+  ViewRecipe,
+  ViewPolicy,
+  ViewStrategyName,
+  ViewContext,
+  ViewEngine,
+  ViewChange,
+  ViewPlan,
+  ApplyViewPlanResult,
+  ViewPlanRequest,
+  ViewState,
+  ViewRequest,
+  ViewResult,
+  ToolPolicy,
+  ToolContract,
+  ToolContractFailure,
+  ToolContractResult,
+  ToolContractSuccess,
+  ToolMode,
+  ToolLane,
+  ToolDefinition,
+  ToolExecutor,
+  ToolRisk,
+  ActionBinding,
+} from './views';
 
-// ─── Interaction QA ─────────────────────────────────────────────────────
-export { validateInteractionResolvability } from './presentation/interactionQA';
-export type {
-  InteractionQAFailureCode,
-  InteractionQAFailure,
-  InteractionQAResult,
-  InteractionQAOptions,
-} from './presentation/interactionQA';
-export {
-  enforceButtonOnClickContract,
-  validateSpecForPublish,
-} from './presentation/specQA';
-export type {
-  ButtonContractRepairResult,
-  SpecQAFailure,
-  SpecQAFailureCode,
-  SpecQAOptions,
-  SpecQAResult,
-} from './presentation/specQA';
+
 
 // ─── Theme ───────────────────────────────────────────────────────────────
 export {
@@ -308,29 +304,3 @@ export {
   loadThemeTokens,
   saveThemeTokens,
 } from './theme';
-
-// ─── UI Memory / Behavior ────────────────────────────────────────────────
-export type {
-  BehaviorAnalysisRunCapture,
-  BehaviorAnalyzer,
-  BehaviorAnalyzerFinding,
-  BehaviorStore,
-  FindingInterpreterPolicy,
-  CalibrationFixture,
-  CalibrationFixtureExpectation,
-  CalibrationFixtureResult,
-  CalibrationProfile,
-  CalibrationProfileResult,
-  UiBehaviorPipelineConfig,
-} from './memory/ui';
-export {
-  InMemoryBehaviorStore,
-  UiBehaviorPipeline,
-  createBehaviorFinding,
-  evaluateCalibrationProfile,
-  integrateBehaviorFindings,
-  interpretBehaviorFindings,
-  rankCalibrationProfiles,
-  CalibrationFixtureSchema,
-  CalibrationProfileSchema,
-} from './memory/ui';

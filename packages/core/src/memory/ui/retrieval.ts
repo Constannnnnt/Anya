@@ -80,7 +80,7 @@ export interface RetrievalConfig {
   behaviorContextWeight?: number;
 }
 
-interface BehaviorAdaptationCandidate extends BehaviorAdaptation {
+export interface BehaviorAdaptationCandidate extends BehaviorAdaptation {
   createdTs: number;
   contextScore: number;
 }
@@ -366,7 +366,7 @@ function formatBehaviorEvidence(adaptation: BehaviorAdaptation): string {
   return metrics.length > 0 ? ` (${metrics.join(', ')})` : '';
 }
 
-function dedupeFindings(findings: BehaviorFinding[]): BehaviorFinding[] {
+export function dedupeFindings(findings: BehaviorFinding[]): BehaviorFinding[] {
   const bestByConcept = new Map<string, BehaviorFinding>();
 
   for (const finding of findings) {
@@ -380,11 +380,11 @@ function dedupeFindings(findings: BehaviorFinding[]): BehaviorFinding[] {
   return [...bestByConcept.values()];
 }
 
-function scoreFindingForDedup(finding: BehaviorFinding): number {
+export function scoreFindingForDedup(finding: BehaviorFinding): number {
   return finding.confidence + finding.support * 0.01 + severityToScore(finding.severity) * 0.1;
 }
 
-function buildBehaviorAdaptationCandidate(
+export function buildBehaviorAdaptationCandidate(
   finding: BehaviorFinding,
   taskClass: string | undefined,
 ): BehaviorAdaptationCandidate {
@@ -580,7 +580,7 @@ function normalizeKey(value: string | undefined): string {
     .replace(/^_+|_+$/g, '');
 }
 
-function severityToScore(severity: BehaviorFindingSeverity | undefined): number {
+export function severityToScore(severity: BehaviorFindingSeverity | undefined): number {
   switch (severity) {
     case 'high':
       return 1;

@@ -30,7 +30,7 @@ describe('agentSessionReducer', () => {
     expect(artifact?.status).toBe('streaming');
   });
 
-  it('promotes the latest replacing main surface as the primary surface', () => {
+  it('promotes the latest replacing main view as the primary view', () => {
     let state = createInitialAgentSessionState('session-2');
 
     state = agentSessionReducer(state, {
@@ -38,25 +38,22 @@ describe('agentSessionReducer', () => {
       sessionId: 'session-2',
       timestamp: 10,
       artifact: createSessionArtifact({
-        id: 'surface-main-1',
+        id: 'view-main-1',
         sessionId: 'session-2',
-        kind: 'surface',
+        kind: 'view',
         createdAt: 10,
         audience: 'user',
         region: 'main',
         status: 'complete',
         payload: {
-          surface: {
-            surfaceKind: 'ui_spec',
-            surfaceId: 'surface-1',
+          view: {
+            id: 'view-1',
+            format: 'ui_spec',
             replace: true,
-            schema: {
-              type: 'anya.ui_spec',
-              spec: {
-                spec_version: 1,
-                layout: 'stack',
-                components: [],
-              },
+            spec: {
+              spec_version: 1,
+              layout: 'stack',
+              components: [],
             },
           },
         },
@@ -68,60 +65,54 @@ describe('agentSessionReducer', () => {
       sessionId: 'session-2',
       timestamp: 20,
       artifact: createSessionArtifact({
-        id: 'surface-sidebar-1',
+        id: 'view-sidebar-1',
         sessionId: 'session-2',
-        kind: 'surface',
+        kind: 'view',
         createdAt: 20,
         audience: 'user',
         region: 'sidebar',
         status: 'complete',
         payload: {
-          surface: {
-            surfaceKind: 'custom',
-            surfaceId: 'surface-2',
+          view: {
+            id: 'view-2',
+            format: 'custom',
             replace: false,
-            schema: {
-              type: 'custom',
-              rendererId: 'sidebar',
-              data: { title: 'Sidebar' },
-            },
+            rendererId: 'sidebar',
+            data: { title: 'Sidebar' },
           },
         },
       }),
     });
 
-    expect(state.primarySurfaceArtifactId).toBe('surface-main-1');
+    expect(state.primaryViewArtifactId).toBe('view-main-1');
 
     state = agentSessionReducer(state, {
       type: 'artifact.upserted',
       sessionId: 'session-2',
       timestamp: 30,
       artifact: createSessionArtifact({
-        id: 'surface-main-2',
+        id: 'view-main-2',
         sessionId: 'session-2',
-        kind: 'surface',
+        kind: 'view',
         createdAt: 30,
         audience: 'user',
         region: 'main',
         status: 'complete',
         payload: {
-          surface: {
-            surfaceKind: 'ui_spec',
-            surfaceId: 'surface-3',
+          view: {
+            id: 'view-3',
+            format: 'ui_spec',
             replace: true,
-            schema: {
-              type: 'anya.ui_spec',
-              spec: {
-                spec_version: 1,
-                layout: 'grid',
-                components: [],
-              },
+            spec: {
+              spec_version: 1,
+              layout: 'grid',
+              components: [],
             },
           },
         },
       }),
     });
 
-    expect(state.primarySurfaceArtifactId).toBe('surface-main-2');
+    expect(state.primaryViewArtifactId).toBe('view-main-2');
   });
 });

@@ -12,7 +12,6 @@ import YAML from 'yaml';
 import type { ComponentCatalog } from './registry/catalog';
 import type { ContextMemoryManager } from './memory/context';
 import type { UIRenderSpec, UIComponentSpec, UIInteractionRecord, UIInteractionDefinition, ThemeTokens } from './types';
-import { normalizeUISpecEnvelope, withSpecVersion } from './spec';
 import { getLogger } from './logging';
 import { nextGeneratedId } from './id';
 
@@ -84,12 +83,27 @@ function buildYamlPrefixCandidates(rawYaml: string, maxTrims = 80): string[] {
 
 function fixUnquotedSemicolons(text: string): string {
   return text.replace(
-    /^(\s+)(allow|style|className|class):\s+([^"\s#\[{].*)$/gm,
-    (_, indent, key, value) => {
+    /^([ \t]+)(allow|style|className|class):[ \t]+([^\r\n"#[{].*)$/gm,
+    (match, indent, key, value) => {
+      if (!value.includes(';')) {
+        return match;
+      }
       const escaped = value.replace(/"/g, '\\"');
       return `${indent}${key}: "${escaped}"`;
     }
   );
+}
+
+function parseYamlWithRepairs(rawYaml: string): unknown {
+  try {
+    return YAML.parse(rawYaml);
+  } catch (rawError) {
+    const repairedYaml = fixUnquotedSemicolons(rawYaml);
+    if (repairedYaml !== rawYaml) {
+      return YAML.parse(repairedYaml);
+    }
+    throw rawError;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -99,13 +113,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function looksLikeSpecEnvelope(value: unknown): value is Record<string, unknown> {
   return isRecord(value)
     && 'layout' in value
-    && 'components' in value
-    && 'spec_version' in value;
+    && 'components' in value;
 }
 
 function tryParseSpecEnvelope(rawYaml: string): boolean {
   try {
-    const parsed = YAML.parse(fixUnquotedSemicolons(rawYaml));
+    const parsed = parseYamlWithRepairs(rawYaml);
     return looksLikeSpecEnvelope(parsed);
   } catch {
     return false;
@@ -169,6 +182,7 @@ const VALID_TRIGGERS = new Set<UIInteractionDefinition['trigger']>([
   'onDoubleClick',
   'onMouseEnter',
   'onMouseLeave',
+  'onChange',
 ]);
 
 function normalizeLayout(input: unknown): UIRenderSpec['layout'] {
@@ -257,16 +271,16 @@ function normalizeInteractionDefinitions(input: unknown): UIInteractionDefinitio
   for (const entry of input) {
     if (!isRecord(entry)) continue;
 
-    const trigger = entry.trigger;
-    const action = entry.action;
-    const description = entry.description;
+    // Normalize on/do shorthand aliases
+    const trigger = entry.trigger ?? entry.on;
+    const action = entry.action ?? entry.do;
+    const description = typeof entry.description === 'string' ? entry.description : (typeof action === 'string' ? action : '');
 
     const toolBinding = normalizeToolCall(entry.tool_call);
 
     if (
       !VALID_TRIGGERS.has(trigger as UIInteractionDefinition['trigger'])
       || typeof action !== 'string'
-      || typeof description !== 'string'
     ) {
       continue;
     }
@@ -286,6 +300,59 @@ function normalizeInteractionDefinitions(input: unknown): UIInteractionDefinitio
   }
 
   return normalized.length ? normalized : undefined;
+}
+
+function normalizeBindTargets(input: unknown): UIComponentSpec['bindTo'] | undefined {
+  if (!Array.isArray(input)) return undefined;
+
+  const normalized: NonNullable<UIComponentSpec['bindTo']> = [];
+
+  for (const entry of input) {
+    if (typeof entry === 'string') {
+      const targetId = entry.trim();
+      if (targetId) {
+        normalized.push(targetId);
+      }
+      continue;
+    }
+
+    const targetId = isRecord(entry)
+      ? (
+        typeof entry.targetId === 'string'
+          ? entry.targetId.trim()
+          : typeof entry.id === 'string'
+            ? entry.id.trim()
+            : ''
+      )
+      : '';
+
+    if (!targetId) {
+      continue;
+    }
+
+    const rawTargetProp = isRecord(entry)
+      ? (
+        typeof entry.targetProp === 'string'
+          ? entry.targetProp
+          : typeof entry.prop === 'string'
+            ? entry.prop
+            : typeof entry.propName === 'string'
+              ? entry.propName
+              : typeof entry.path === 'string'
+                ? entry.path
+                : undefined
+      )
+      : undefined;
+
+    normalized.push({
+      targetId,
+      targetProp: typeof rawTargetProp === 'string' && rawTargetProp.trim()
+        ? rawTargetProp
+        : undefined,
+    });
+  }
+
+  return normalized.length > 0 ? normalized : undefined;
 }
 
 /**
@@ -312,10 +379,9 @@ export function decode(
 
 let parsed: Record<string, unknown>;
   try {
-    const fixedYaml = fixUnquotedSemicolons(cleaned);
-    parsed = YAML.parse(fixedYaml);
+    parsed = parseYamlWithRepairs(cleaned) as Record<string, unknown>;
   } catch (err) {
-    logger.warn('[Translator.decode] YAML parse failed.');
+    logger.warn('[Translator.decode] YAML parse failed.', err);
     throw new Error('[Translator.decode] Could not parse YAML from LLM output.');
   }
 
@@ -324,11 +390,10 @@ let parsed: Record<string, unknown>;
     throw new Error('[Translator.decode] YAML did not parse to an object spec.');
   }
 
-  const normalized = normalizeUISpecEnvelope(parsed);
-  const layout = normalizeLayout(normalized.layout);
-  const rawComponents = normalizeRawComponents(normalized.components);
+  const layout = normalizeLayout(parsed.layout);
+  const rawComponents = normalizeRawComponents(parsed.components);
 
-  if ('components' in normalized && !Array.isArray(normalized.components)) {
+  if ('components' in parsed && !Array.isArray(parsed.components)) {
     logger.warn('[Translator.decode] "components" is not an array.');
     throw new Error('[Translator.decode] "components" must be an array.');
   }
@@ -341,15 +406,14 @@ let parsed: Record<string, unknown>;
     .map((raw) => decodeComponent(raw, catalog))
     .filter((c): c is UIComponentSpec => c !== null);
 
-  return withSpecVersion({
-    spec_version: normalized.spec_version as number | undefined,
-    skill: normalizeOptionalString(normalized.skill),
-    ux_rationale: normalizeOptionalString(normalized.ux_rationale),
+  return {
+    skill: normalizeOptionalString(parsed.skill),
+    ux_rationale: normalizeOptionalString(parsed.ux_rationale),
     layout,
     components,
-    profile_observation: normalizeOptionalString(normalized.profile_observation),
-    theme_update: normalizeThemeUpdate(normalized.theme_update),
-  });
+    profile_observation: normalizeOptionalString(parsed.profile_observation),
+    theme_update: normalizeThemeUpdate(parsed.theme_update),
+  };
 }
 
 function sanitizeRawProps(props: Record<string, unknown>): Record<string, unknown> {
@@ -410,7 +474,7 @@ function decodeComponent(
     type,
     props,
     interactions: rawInteractions?.length ? rawInteractions : undefined,
-    bindTo: Array.isArray(raw.bindTo) ? raw.bindTo.filter(id => typeof id === 'string') : undefined,
+    bindTo: normalizeBindTargets(raw.bindTo),
     draggable,
     children: children?.length ? children : undefined,
   };
@@ -431,6 +495,7 @@ export function encode(
 
   switch (interaction.action) {
     case 'change':
+    case 'value_change':
       parts.push(
         `Changed ${interaction.componentName}.${interaction.propName ?? 'value'} ` +
         `from ${JSON.stringify(interaction.previousValue)} ` +

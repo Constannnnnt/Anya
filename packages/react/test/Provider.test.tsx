@@ -3,15 +3,17 @@ import { render, renderHook, act } from '@testing-library/react';
 import React from 'react';
 import { AnyaProvider, useAnyaContext } from '../src/Provider';
 import {
-  createBehaviorFinding,
   createRuntimeEvent,
   getLogger,
   setLogger,
   silentLogger,
-  type BehaviorAnalyzer,
   type FileStorage,
   type Logger,
 } from '@anya-ui/core';
+import {
+  createBehaviorFinding,
+  type BehaviorAnalyzer,
+} from '../../core/src/experimental';
 import { z } from 'zod';
 import type { AnyaComponent } from '../src/defineComponent';
 
@@ -96,8 +98,8 @@ describe('AnyaProvider & useAnyaContext', () => {
         const { result } = renderHook(() => useAnyaContext(), { wrapper });
 
         expect(result.current.catalog).toBeDefined();
-        expect(result.current.memory).toBeDefined();
-        expect(result.current.orchestrator).toBeDefined();
+        expect(result.current.sessionMemory).toBeDefined();
+        expect(result.current.agentBridge).toBeDefined();
         expect(result.current.componentMap).toBeDefined();
         expect(result.current.componentMap.has('Heading')).toBe(true);
     });
@@ -210,11 +212,12 @@ describe('AnyaProvider & useAnyaContext', () => {
 
         act(() => {
             result.current.runtime.dispatch(createRuntimeEvent('ui.presented', {
-                surface: {
-                    uiId: 'ui-provider',
-                    surfaceHash: 'ui-provider',
+                view: {
+                    id: 'ui-provider',
+                    kind: 'generated',
                     layout: 'split',
-                    workflowContext: 'analysis',
+                    workflow: 'analysis',
+                    fingerprint: 'ui-provider',
                     componentCount: 2,
                     interactiveCount: 1,
                     actionableCount: 1,
@@ -261,7 +264,7 @@ describe('AnyaProvider & useAnyaContext', () => {
             const { rerender } = render(
                 <AnyaProvider
                     components={mockComponents}
-                    workflowContexts={baseWorkflowContexts}
+                    workflows={baseWorkflowContexts}
                     allowedCapabilities={['drag_drop']}
                     storage={storageA}
                 >
@@ -274,7 +277,7 @@ describe('AnyaProvider & useAnyaContext', () => {
             rerender(
                 <AnyaProvider
                     components={alternateComponents}
-                    workflowContexts={[
+                    workflows={[
                         {
                             name: 'gallery_review',
                             description: 'Review a media gallery',
@@ -293,7 +296,7 @@ describe('AnyaProvider & useAnyaContext', () => {
 
             const warningMessages = warn.mock.calls.map((call) => String(call[0]));
             expect(warningMessages.some((message) => message.includes("'components' is mount-only"))).toBe(true);
-            expect(warningMessages.some((message) => message.includes("'workflowContexts' is mount-only"))).toBe(true);
+            expect(warningMessages.some((message) => message.includes("'workflows' is mount-only"))).toBe(true);
             expect(warningMessages.some((message) => message.includes("'allowedCapabilities' is mount-only"))).toBe(true);
             expect(warningMessages.some((message) => message.includes("'storage' is mount-only"))).toBe(true);
             expect(warningMessages.some((message) => message.includes("'uiMemory' is mount-only"))).toBe(true);
@@ -309,7 +312,7 @@ describe('AnyaProvider & useAnyaContext', () => {
             const { rerender } = render(
                 <AnyaProvider
                     components={[...mockComponents]}
-                    workflowContexts={[...baseWorkflowContexts]}
+                    workflows={[...baseWorkflowContexts]}
                     allowedCapabilities={['drag_drop']}
                 >
                     <div>child</div>
@@ -321,7 +324,7 @@ describe('AnyaProvider & useAnyaContext', () => {
             rerender(
                 <AnyaProvider
                     components={[...mockComponents]}
-                    workflowContexts={[...baseWorkflowContexts]}
+                    workflows={[...baseWorkflowContexts]}
                     allowedCapabilities={['drag_drop']}
                 >
                     <div>child</div>
@@ -336,3 +339,4 @@ describe('AnyaProvider & useAnyaContext', () => {
         }
     });
 });
+

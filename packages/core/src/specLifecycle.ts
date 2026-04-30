@@ -1,10 +1,11 @@
 import type { UIRenderSpec } from './types';
 import type { ContextMemoryManager } from './memory/context';
 import type { AdaptiveProfile } from './memory/profile';
-import type { PresentationContext, UIBinding } from './presentation/types';
-import type { PresentationEngine } from './presentation/uiEngine';
+import type { ActionBinding, ViewContext } from './views/types';
+import type { ViewEngine } from './views/engine';
 import type { RuntimeEventSource } from './runtime/events';
-import { extractBindingsFromSpec } from './presentation/uiBuilder';
+import { extractActionBindings } from './views/planner';
+import type { ViewMetadata } from './types';
 
 function normalizeObservation(value: string | undefined): string | undefined {
   const normalized = value?.trim();
@@ -12,34 +13,38 @@ function normalizeObservation(value: string | undefined): string | undefined {
 }
 
 function resolveWorkflowContextPatch(
-  spec: UIRenderSpec
-): Partial<Pick<PresentationContext, 'workflowContext'>> {
-  if (!spec.skill) return {};
+  spec: UIRenderSpec,
+  view?: ViewMetadata,
+): Partial<Pick<ViewContext, 'workflowContext'>> {
+  const workflowContext = spec.skill ?? view?.workflow;
+  if (!workflowContext) return {};
   return {
-    workflowContext: spec.skill,
+    workflowContext,
   };
 }
 
 export interface ApplySpecOptions {
   source?: RuntimeEventSource;
   userIntent?: string;
+  view?: ViewMetadata;
+  bindings?: ActionBinding[];
 }
 
 export interface ApplySpecDependencies {
   memory: ContextMemoryManager;
   profile?: AdaptiveProfile;
-  presentation?: Pick<PresentationEngine, 'setContext'>;
+  viewEngine?: Pick<ViewEngine, 'setContext'>;
 }
 
 export interface ApplySpecResult {
-  bindings: UIBinding[];
-  presentationPatch: Partial<PresentationContext>;
+  bindings: ActionBinding[];
+  viewPatch: Partial<ViewContext>;
   profileObservation?: string;
 }
 
 /**
  * Shared lifecycle for decoded specs.
- * Keeps memory/profile/presentation updates deterministic and centralized.
+ * Keeps memory/profile/view updates deterministic and centralized.
  */
 export function applyDecodedSpec(
   spec: UIRenderSpec,
@@ -50,20 +55,30 @@ export function applyDecodedSpec(
     deps.memory.setContext({ userIntent: options.userIntent });
   }
 
-  if (spec.skill) {
+  const workflowContext = spec.skill ?? options?.view?.workflow;
+
+  if (workflowContext) {
     deps.memory.setContext({
-      workflowContext: spec.skill,
+      workflowContext,
     });
   }
 
   deps.memory.saveCurrentSpec(spec);
 
-  const bindings = extractBindingsFromSpec(spec).bindings;
-  const workflowPatch = resolveWorkflowContextPatch(spec);
+  const bindings = options?.bindings ?? extractActionBindings(spec).bindings;
+  const workflowPatch = resolveWorkflowContextPatch(spec, options?.view);
+  const currentView: ViewMetadata = {
+    kind: options?.view?.kind ?? 'generated',
+    ...(options?.view?.id ? { id: options.view.id } : {}),
+    ...(options?.view?.title ? { title: options.view.title } : {}),
+    ...(options?.view?.templateId ? { templateId: options.view.templateId } : {}),
+    ...(workflowContext ? { workflow: workflowContext } : {}),
+  };
   const source = options?.source ?? 'system';
-  const presentationPatch: Partial<PresentationContext> =
+  const viewPatch: Partial<ViewContext> =
     source === 'agent'
       ? {
+          currentView,
           ...workflowPatch,
           candidateSpec: spec,
           candidateBindings: bindings,
@@ -71,20 +86,23 @@ export function applyDecodedSpec(
           currentBindings: bindings,
         }
       : {
+          currentView,
           ...workflowPatch,
           candidateSpec: spec,
+          candidateBindings: bindings,
           currentSpec: spec,
+          currentBindings: bindings,
         };
 
-  if (deps.presentation) {
-    deps.presentation.setContext(presentationPatch);
+  if (deps.viewEngine) {
+    deps.viewEngine.setContext(viewPatch);
   }
 
   const profileObservation = normalizeObservation(spec.profile_observation);
 
   return {
     bindings,
-    presentationPatch,
+    viewPatch,
     profileObservation,
   };
 }

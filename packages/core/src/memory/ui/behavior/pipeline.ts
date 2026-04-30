@@ -20,7 +20,7 @@ import {
 import { integrateBehaviorFindings, type IntegrateBehaviorFindingsResult } from './interpreter';
 import {
   createBuiltinBehaviorAnalyzers,
-} from './builtinAnalyzers';
+} from './heuristics';
 import { projectBehaviorSignals } from './signalProjector';
 import { reduceBehaviorSegments } from './segmentReducer';
 import { projectBehaviorSessionSummaries } from './sessionSummaryProjector';

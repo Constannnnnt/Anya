@@ -114,6 +114,20 @@ function writeCtsDeclaration(entryName) {
   fs.copyFileSync(sourcePath, targetPath);
 }
 
+function writeExperimentalCompatShim() {
+  const jsTarget = path.join(cwd, 'experimental.js');
+  const dtsTarget = path.join(cwd, 'experimental.d.ts');
+
+  fs.writeFileSync(
+    jsTarget,
+    "module.exports = require('./dist-cjs/experimental.js');\n",
+  );
+  fs.writeFileSync(
+    dtsTarget,
+    "export * from './dist/experimental.js';\n",
+  );
+}
+
 if (!fs.existsSync(distCjsDir)) {
   fs.mkdirSync(distCjsDir, { recursive: true });
 }
@@ -127,3 +141,4 @@ fixDtsImports(distDir);
 fixJsImports(distDir);
 writeCtsDeclaration('index');
 writeCtsDeclaration('experimental');
+writeExperimentalCompatShim();

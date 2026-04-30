@@ -11,7 +11,7 @@ import {
   createPracticeCurveAnalyzer,
   createReworkFrictionAnalyzer,
   createSteeringLawAnalyzer,
-} from '../src/memory/ui/behavior/builtinAnalyzers';
+} from '../src/memory/ui/behavior/heuristics';
 import type {
   BehaviorAggregate,
   BehaviorSegment,
@@ -143,13 +143,13 @@ describe('builtin behavior analyzers', () => {
     const result = await analyzer.run({
       ...BASE_INPUT,
       signals: [
-        makeSignal({ id: 'n1', sessionId: 'session-1', contextArchetype: 'navigate_drilldown', actionFamily: 'navigation', uiId: 'A', ts: 1 }),
-        makeSignal({ id: 'n2', sessionId: 'session-1', contextArchetype: 'navigate_drilldown', actionFamily: 'navigation', uiId: 'B', ts: 2 }),
-        makeSignal({ id: 'n3', sessionId: 'session-1', contextArchetype: 'navigate_drilldown', actionFamily: 'navigation', uiId: 'A', ts: 3 }),
-        makeSignal({ id: 'n4', sessionId: 'session-1', contextArchetype: 'navigate_drilldown', actionFamily: 'navigation', uiId: 'B', ts: 4 }),
-        makeSignal({ id: 'n5', sessionId: 'session-2', contextArchetype: 'navigate_drilldown', actionFamily: 'navigation', uiId: 'A', ts: 5 }),
-        makeSignal({ id: 'n6', sessionId: 'session-2', contextArchetype: 'navigate_drilldown', actionFamily: 'navigation', uiId: 'C', ts: 6 }),
-        makeSignal({ id: 'n7', sessionId: 'session-2', contextArchetype: 'navigate_drilldown', actionFamily: 'navigation', uiId: 'A', ts: 7 }),
+        makeSignal({ id: 'n1', sessionId: 'session-1', contextArchetype: 'navigate_drilldown', actionFamily: 'navigation', viewId: 'A', ts: 1 }),
+        makeSignal({ id: 'n2', sessionId: 'session-1', contextArchetype: 'navigate_drilldown', actionFamily: 'navigation', viewId: 'B', ts: 2 }),
+        makeSignal({ id: 'n3', sessionId: 'session-1', contextArchetype: 'navigate_drilldown', actionFamily: 'navigation', viewId: 'A', ts: 3 }),
+        makeSignal({ id: 'n4', sessionId: 'session-1', contextArchetype: 'navigate_drilldown', actionFamily: 'navigation', viewId: 'B', ts: 4 }),
+        makeSignal({ id: 'n5', sessionId: 'session-2', contextArchetype: 'navigate_drilldown', actionFamily: 'navigation', viewId: 'A', ts: 5 }),
+        makeSignal({ id: 'n6', sessionId: 'session-2', contextArchetype: 'navigate_drilldown', actionFamily: 'navigation', viewId: 'C', ts: 6 }),
+        makeSignal({ id: 'n7', sessionId: 'session-2', contextArchetype: 'navigate_drilldown', actionFamily: 'navigation', viewId: 'A', ts: 7 }),
       ],
     });
 
@@ -308,12 +308,12 @@ describe('builtin behavior analyzers', () => {
     const result = await analyzer.run({
       ...BASE_INPUT,
       signals: [
-        makeSignal({ id: 'i1', sessionId: 'session-1', contextArchetype: 'search_filter', actionFamily: 'navigation', uiId: 'search', choiceSetSize: 6, ts: 1 }),
-        makeSignal({ id: 'i2', sessionId: 'session-1', contextArchetype: 'search_filter', actionFamily: 'navigation', uiId: 'results', choiceSetSize: 6, ts: 2 }),
-        makeSignal({ id: 'i3', sessionId: 'session-1', contextArchetype: 'search_filter', actionFamily: 'navigation', uiId: 'search', choiceSetSize: 6, ts: 3 }),
-        makeSignal({ id: 'i4', sessionId: 'session-2', contextArchetype: 'search_filter', actionFamily: 'navigation', uiId: 'search', choiceSetSize: 7, ts: 4 }),
-        makeSignal({ id: 'i5', sessionId: 'session-2', contextArchetype: 'search_filter', actionFamily: 'navigation', uiId: 'results', choiceSetSize: 7, ts: 5 }),
-        makeSignal({ id: 'i6', sessionId: 'session-2', contextArchetype: 'search_filter', actionFamily: 'navigation', uiId: 'search', choiceSetSize: 7, ts: 6 }),
+        makeSignal({ id: 'i1', sessionId: 'session-1', contextArchetype: 'search_filter', actionFamily: 'navigation', viewId: 'search', choiceSetSize: 6, ts: 1 }),
+        makeSignal({ id: 'i2', sessionId: 'session-1', contextArchetype: 'search_filter', actionFamily: 'navigation', viewId: 'results', choiceSetSize: 6, ts: 2 }),
+        makeSignal({ id: 'i3', sessionId: 'session-1', contextArchetype: 'search_filter', actionFamily: 'navigation', viewId: 'search', choiceSetSize: 6, ts: 3 }),
+        makeSignal({ id: 'i4', sessionId: 'session-2', contextArchetype: 'search_filter', actionFamily: 'navigation', viewId: 'search', choiceSetSize: 7, ts: 4 }),
+        makeSignal({ id: 'i5', sessionId: 'session-2', contextArchetype: 'search_filter', actionFamily: 'navigation', viewId: 'results', choiceSetSize: 7, ts: 5 }),
+        makeSignal({ id: 'i6', sessionId: 'session-2', contextArchetype: 'search_filter', actionFamily: 'navigation', viewId: 'search', choiceSetSize: 7, ts: 6 }),
       ],
       sessionSummaries: [
         makeSummary({ id: 'sum-i1', sessionId: 'session-1', contextArchetype: 'search_filter' }),

@@ -1,10 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   createRuntimeEvent,
-  createRuntimeFailureBudgetEffect,
   createRuntimeStore,
-  createRuntimeTelemetryEffect,
 } from '../src';
+import {
+  createRuntimeFailureBudgetEffect,
+  createRuntimeTelemetryEffect,
+} from '../src/internal';
 
 describe('runtime telemetry + failure budget effects', () => {
   it('emits telemetry for dispatched runtime events', () => {

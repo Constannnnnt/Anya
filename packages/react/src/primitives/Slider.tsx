@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { defineComponent } from '../defineComponent';
 import {
     measureSelectionTarget,
+    splitDynamicInteractions,
     useSyncedState,
     type PrimitiveBehaviorProps,
     type PrimitiveRenderProps,
@@ -34,19 +35,20 @@ export const Slider = defineComponent({
     }),
     tags: ['form', 'input', 'slider'],
     examples: [
-        'type: Slider\nprops:\n  label: Zoom Level\n  value: { $data: { nodeId: "view_state", path: "zoom" } }\nbindTo:\n  - view_state',
-        'type: Slider\nprops:\n  label: Hidden Dim\n  value: { $data: { nodeId: "model_params", path: "d_model" } }\nbindTo:\n  - model_params',
+        'type: Slider\nid: zoom-slider\nprops:\n  label: Zoom Level\n  value: 110\nbindTo:\n  - targetId: zoom-label\n    targetProp: content',
+        'type: Slider\nprops:\n  label: Hidden Dim\n  value: { $data: { nodeId: "model_params", path: "d_model" } }',
     ],
     render: ({ id, props, onInteraction }: PrimitiveRenderProps<SliderProps>) => {
         const min = props.min ?? 0;
         const max = props.max ?? 100;
         const [val, setVal] = useSyncedState(props.value, min);
+        const { containerInteractions } = splitDynamicInteractions(props.dynamicInteractions);
         return (
             <div
                 id={id}
                 className={`anya-slider-wrapper ${props.className || ''}`}
                 style={props.style}
-                {...props.dynamicInteractions}
+                {...containerInteractions}
             >
                 {props.label && <label className="anya-slider-label" htmlFor={`${id}-slider`}>{props.label}</label>}
                 <div className="anya-slider-container">
@@ -63,6 +65,7 @@ export const Slider = defineComponent({
                             const newVal = Number(e.target.value);
                             setVal(newVal);
                             onInteraction('value_change', {
+                                trigger: 'onChange',
                                 propName: 'value',
                                 previousValue: val,
                                 newValue: newVal,

@@ -4,7 +4,7 @@ import { ComponentCatalog } from '../src/registry/catalog';
 import { SkillRegistry } from '../src/registry/skills';
 import { ContextMemoryManager } from '../src/memory/context';
 import { createOrchestrator } from '../src/orchestrator';
-import { collectAgentSessionEvents } from '../src/session';
+import { collectAgentSessionEvents, createSessionArtifact } from '../src/session';
 import type {
   AgentSessionStartInput,
   AgentSessionTransport,
@@ -49,32 +49,33 @@ describe('DynamicOrchestrator session transport integration', () => {
               sessionId,
               timestamp: 3,
               artifact: {
-                id: 'artifact-surface',
+                id: 'artifact-view',
                 sessionId,
-                kind: 'surface' as const,
+                kind: 'view' as const,
                 version: 1,
                 createdAt: 3,
                 audience: 'user' as const,
                 region: 'main' as const,
+                title: 'Profile Editor',
                 payload: {
-                  surface: {
-                    surfaceKind: 'ui_spec' as const,
-                    surfaceId: 'surface-main',
-                    schema: {
-                      type: 'anya.ui_spec' as const,
-                      spec: {
-                        spec_version: 1,
-                        layout: 'stack' as const,
-                        skill: 'profile_edit',
-                        components: [
-                          {
-                            id: 'h1',
-                            type: 'Heading',
-                            props: { text: 'Profile' },
-                          },
-                        ],
-                      },
+                  view: {
+                    id: 'profile-main',
+                    format: 'ui_spec' as const,
+                    title: 'Profile Editor',
+                    workflow: 'profile_edit',
+                    spec: {
+                      spec_version: 1,
+                      layout: 'stack' as const,
+                      skill: 'profile_edit',
+                      components: [
+                        {
+                          id: 'h1',
+                          type: 'Heading',
+                          props: { text: 'Profile' },
+                        },
+                      ],
                     },
+                    bindings: [],
                   },
                 },
               },
@@ -114,6 +115,20 @@ describe('DynamicOrchestrator session transport integration', () => {
           timestamp: 123,
         },
       ],
+      currentArtifacts: [
+        createSessionArtifact({
+          id: 'artifact-current',
+          sessionId: 'session-current',
+          kind: 'message',
+          createdAt: 1,
+          audience: 'user',
+          payload: {
+            role: 'assistant',
+            text: 'Current artifact',
+          },
+        }),
+      ],
+      currentViewId: 'profile-main',
     });
     const events = await collectAgentSessionEvents(run);
 
@@ -127,9 +142,11 @@ describe('DynamicOrchestrator session transport integration', () => {
         timestamp: 123,
       },
     ]);
+    expect(capturedInput?.currentArtifacts).toHaveLength(1);
+    expect(capturedInput?.currentViewId).toBe('profile-main');
     expect(events[0]?.type).toBe('session.started');
     expect(
-      events.some((event) => event.type === 'artifact.upserted' && event.artifact.kind === 'surface'),
+      events.some((event) => event.type === 'artifact.upserted' && event.artifact.kind === 'view'),
     ).toBe(true);
     expect(events.at(-1)?.type).toBe('session.completed');
   });

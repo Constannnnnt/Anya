@@ -1,11 +1,12 @@
 import type {
   InteractionModality,
-  UIComponentSpec,
-  UIInteractionMeasurement,
-  UIInteractionMeasurementHint,
-  UIInteractionRecord,
-  UIPresentedSurface,
-  UIRenderSpec,
+  ViewNode,
+  InteractionMeasurement,
+  InteractionMeasurementHint,
+  InteractionEvent,
+  PresentedView,
+  ViewSpec,
+  ViewOrigin,
 } from '@anya-ui/core';
 import { stableSerialize } from '../utils/stableSerialize';
 
@@ -24,8 +25,8 @@ export const DEFAULT_BEHAVIOR_TELEMETRY_POLICY: BehaviorTelemetryPolicy = Object
 });
 
 interface ComponentLookup {
-  component: UIComponentSpec;
-  parent?: UIComponentSpec;
+  component: ViewNode;
+  parent?: ViewNode;
 }
 
 interface MeasurableElement extends EventTarget {
@@ -122,14 +123,24 @@ const ACTION_CLUSTER_COMPONENTS = new Set([
   'tabitem',
 ]);
 
-export function buildPresentedSurface(
-  spec: UIRenderSpec,
-): UIPresentedSurface {
+export interface PresentedViewOptions {
+  kind?: ViewOrigin;
+  id?: string;
+  title?: string;
+  templateId?: string;
+  workflow?: string;
+}
+
+export function buildPresentedView(
+  spec: ViewSpec,
+  options?: PresentedViewOptions,
+): PresentedView {
   let componentCount = 0;
   let interactiveCount = 0;
   let actionableCount = 0;
   const componentFamilies = new Set<string>();
   const actionFamilies = new Set<string>();
+  const workflow = options?.workflow ?? spec.skill;
 
   walkComponents(spec.components, (component) => {
     componentCount += 1;
@@ -146,33 +157,37 @@ export function buildPresentedSurface(
     }
   });
 
-  const surfaceHash = hashString(
+  const fingerprint = hashString(
     stableSerialize({
-      skill: spec.skill,
+      skill: workflow,
       layout: spec.layout,
       components: spec.components.map(summarizeComponent),
     }),
   );
+  const id = options?.id ?? `view-${fingerprint}`;
 
   return {
-    uiId: `ui-${surfaceHash}`,
+    id,
+    kind: options?.kind ?? 'generated',
     layout: spec.layout,
-    workflowContext: spec.skill,
+    workflow,
+    templateId: options?.templateId,
+    title: options?.title,
     componentCount,
     interactiveCount,
     actionableCount,
     componentFamilies: [...componentFamilies].sort(),
     actionFamilies: [...actionFamilies].sort(),
-    surfaceHash,
+    fingerprint,
   };
 }
 
 export function deriveInteractionMeasurement(
-  interaction: UIInteractionRecord,
-  spec?: UIRenderSpec | null,
-  measurementHint?: UIInteractionMeasurementHint,
+  interaction: InteractionEvent,
+  spec?: ViewSpec | null,
+  measurementHint?: InteractionMeasurementHint,
   policy: BehaviorTelemetryPolicy = DEFAULT_BEHAVIOR_TELEMETRY_POLICY,
-): UIInteractionMeasurement {
+): InteractionMeasurement {
   const componentLookup = spec
     ? findComponent(spec.components, interaction.elementId)
     : undefined;
@@ -217,10 +232,10 @@ export function deriveInteractionMeasurement(
 }
 
 export function sanitizeInteractionRecordForTelemetry(
-  interaction: UIInteractionRecord,
-  measurement: UIInteractionMeasurement,
+  interaction: InteractionEvent,
+  measurement: InteractionMeasurement,
   policy: BehaviorTelemetryPolicy = DEFAULT_BEHAVIOR_TELEMETRY_POLICY,
-): UIInteractionRecord {
+): InteractionEvent {
   if (policy.captureRawValues) {
     return cloneInteractionRecord(interaction);
   }
@@ -240,9 +255,9 @@ export function sanitizeInteractionRecordForTelemetry(
 export function measureElementTarget(
   element: EventTarget | null,
   modality: InteractionModality = 'unknown',
-  overrides?: Partial<UIInteractionMeasurementHint>,
-): UIInteractionMeasurementHint {
-  const base: UIInteractionMeasurementHint = { modality };
+  overrides?: Partial<InteractionMeasurementHint>,
+): InteractionMeasurementHint {
+  const base: InteractionMeasurementHint = { modality };
   if (!hasBoundingClientRect(element)) {
     return {
       ...base,
@@ -267,8 +282,8 @@ export function measurePointerTarget(
     clientY?: number;
     detail?: number;
   } | null,
-  overrides?: Partial<UIInteractionMeasurementHint>,
-): UIInteractionMeasurementHint {
+  overrides?: Partial<InteractionMeasurementHint>,
+): InteractionMeasurementHint {
   const modality = event?.detail === 0 ? 'keyboard' : 'pointer';
   return measureElementTarget(element, modality, {
     pointerX: normalizeDimension(event?.clientX),
@@ -278,8 +293,8 @@ export function measurePointerTarget(
 }
 
 function walkComponents(
-  components: UIComponentSpec[],
-  visitor: (component: UIComponentSpec) => void,
+  components: ViewNode[],
+  visitor: (component: ViewNode) => void,
 ): void {
   for (const component of components) {
     visitor(component);
@@ -289,7 +304,7 @@ function walkComponents(
   }
 }
 
-function summarizeComponent(component: UIComponentSpec): Record<string, unknown> {
+function summarizeComponent(component: ViewNode): Record<string, unknown> {
   return {
     id: component.id,
     type: component.type,
@@ -308,9 +323,9 @@ function hashString(value: string): string {
 }
 
 function findComponent(
-  components: UIComponentSpec[],
+  components: ViewNode[],
   componentId: string,
-  parent?: UIComponentSpec,
+  parent?: ViewNode,
 ): ComponentLookup | undefined {
   for (const component of components) {
     if (component.id === componentId) {
@@ -336,7 +351,7 @@ function normalizeNonNegativeCount(value: unknown): number | undefined {
     : undefined;
 }
 
-function cloneInteractionRecord(interaction: UIInteractionRecord): UIInteractionRecord {
+function cloneInteractionRecord(interaction: InteractionEvent): InteractionEvent {
   return {
     ...interaction,
     ...(interaction.targetIds ? { targetIds: [...interaction.targetIds] } : {}),
@@ -351,7 +366,7 @@ function measureValueLength(value: unknown): number | undefined {
 
 function resolveChoiceSetSize(
   componentLookup: ComponentLookup | undefined,
-  measurementHint?: UIInteractionMeasurementHint,
+  measurementHint?: InteractionMeasurementHint,
 ): number | undefined {
   const explicit = normalizeNonNegativeCount(measurementHint?.choiceSetSize);
   if (explicit !== undefined) {
@@ -379,7 +394,7 @@ function resolveChoiceSetSize(
   return undefined;
 }
 
-function countIntrinsicAlternatives(component: UIComponentSpec): number | undefined {
+function countIntrinsicAlternatives(component: ViewNode): number | undefined {
   const normalized = normalizeComponentName(component.type);
   if (normalized === 'tabs') {
     const count = component.children?.length ?? 0;
@@ -396,7 +411,7 @@ function countIntrinsicAlternatives(component: UIComponentSpec): number | undefi
   return undefined;
 }
 
-function countActionClusterChildren(children: UIComponentSpec[]): number {
+function countActionClusterChildren(children: ViewNode[]): number {
   return children.reduce((count, child) =>
     ACTION_CLUSTER_COMPONENTS.has(normalizeComponentName(child.type))
       ? count + 1
@@ -405,8 +420,8 @@ function countActionClusterChildren(children: UIComponentSpec[]): number {
 }
 
 function sanitizeMeasurementHintOverrides(
-  overrides?: Partial<UIInteractionMeasurementHint>,
-): Partial<UIInteractionMeasurementHint> {
+  overrides?: Partial<InteractionMeasurementHint>,
+): Partial<InteractionMeasurementHint> {
   if (!overrides) {
     return {};
   }
@@ -435,7 +450,7 @@ function sanitizeMeasurementHintOverrides(
 }
 
 function inferInteractionModality(
-  interaction: UIInteractionRecord,
+  interaction: InteractionEvent,
 ): InteractionModality {
   const normalizedComponent = normalizeComponentName(interaction.componentName);
   if (TEXT_LIKE_COMPONENTS.has(normalizedComponent)) {
@@ -455,8 +470,8 @@ function inferInteractionModality(
 }
 
 function isTextLikeMeasurement(
-  measurement: UIInteractionMeasurement,
-  interaction: UIInteractionRecord,
+  measurement: InteractionMeasurement,
+  interaction: InteractionEvent,
 ): boolean {
   if (measurement.componentRole === 'textbox') {
     return true;
@@ -464,7 +479,7 @@ function isTextLikeMeasurement(
   return TEXT_LIKE_COMPONENTS.has(normalizeComponentName(interaction.componentName));
 }
 
-function sanitizeTextLikeDescription(interaction: UIInteractionRecord): string {
+function sanitizeTextLikeDescription(interaction: InteractionEvent): string {
   switch (interaction.componentName) {
     case 'SearchInput':
       return 'User updated search query.';
@@ -549,7 +564,7 @@ function inferActionFamily(action: string): string {
   return 'custom';
 }
 
-function inferPrimaryAction(component: UIComponentSpec): boolean | undefined {
+function inferPrimaryAction(component: ViewNode): boolean | undefined {
   if (component.type !== 'Button') return undefined;
   const variant = typeof component.props.variant === 'string'
     ? component.props.variant.toLowerCase()
@@ -570,3 +585,4 @@ function hasBoundingClientRect(value: EventTarget | null): value is MeasurableEl
 function normalizeComponentName(componentName: string): string {
   return componentName.toLowerCase();
 }
+

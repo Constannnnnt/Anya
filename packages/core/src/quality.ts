@@ -2,13 +2,13 @@
  * Quality gate evaluators and summary builders used in release checks.
  * All functions are deterministic and side-effect free.
  */
-import type { BindingExecutionRecord } from './presentation/types';
+import type { ActionResult } from './views/types';
 import type { RuntimeTelemetryEvent } from './runtime';
 
 export interface BenchmarkThroughputMetrics {
   runtimeEventsPerSecond: number;
-  presentationPatchOpsPerSecond: number;
-  presentationRebuildOpsPerSecond: number;
+  viewPatchOpsPerSecond: number;
+  viewRebuildOpsPerSecond: number;
 }
 
 export interface RuntimeTelemetrySummary {
@@ -24,7 +24,7 @@ export interface RuntimeTelemetrySummary {
   eventsPerSecond: number | null;
 }
 
-export interface PresentationExecutionSummary {
+export interface ViewExecutionSummary {
   totalRecords: number;
   successCount: number;
   errorCount: number;
@@ -40,8 +40,8 @@ export interface PresentationExecutionSummary {
 
 export interface QualityGatePolicy {
   minRuntimeEventsPerSecond: number;
-  minPresentationPatchOpsPerSecond: number;
-  minPresentationRebuildOpsPerSecond: number;
+  minViewPatchOpsPerSecond: number;
+  minViewRebuildOpsPerSecond: number;
   maxDecodeFailureRatio: number;
   minDecodeSamples: number;
   maxOptimisticRollbackRate: number;
@@ -52,8 +52,8 @@ export interface QualityGatePolicy {
 
 export const DEFAULT_QUALITY_GATE_POLICY: QualityGatePolicy = {
   minRuntimeEventsPerSecond: 500_000,
-  minPresentationPatchOpsPerSecond: 800,
-  minPresentationRebuildOpsPerSecond: 800,
+  minViewPatchOpsPerSecond: 800,
+  minViewRebuildOpsPerSecond: 800,
   maxDecodeFailureRatio: 0.2,
   minDecodeSamples: 25,
   maxOptimisticRollbackRate: 0.15,
@@ -64,14 +64,14 @@ export const DEFAULT_QUALITY_GATE_POLICY: QualityGatePolicy = {
 
 export interface BenchmarkRegressionPolicy {
   maxRuntimeDropRatio: number;
-  maxPresentationPatchDropRatio: number;
-  maxPresentationRebuildDropRatio: number;
+  maxViewPatchDropRatio: number;
+  maxViewRebuildDropRatio: number;
 }
 
 export const DEFAULT_BENCHMARK_REGRESSION_POLICY: BenchmarkRegressionPolicy = {
   maxRuntimeDropRatio: 0.3,
-  maxPresentationPatchDropRatio: 0.25,
-  maxPresentationRebuildDropRatio: 0.25,
+  maxViewPatchDropRatio: 0.25,
+  maxViewRebuildDropRatio: 0.25,
 };
 
 export type QualityCheckStatus = 'pass' | 'fail' | 'skip';
@@ -87,7 +87,7 @@ export interface QualityGateCheck {
 export interface QualityGateInput {
   benchmarks: BenchmarkThroughputMetrics;
   runtimeTelemetry?: RuntimeTelemetrySummary;
-  presentationExecutions?: PresentationExecutionSummary;
+  viewExecutions?: ViewExecutionSummary;
   policy?: Partial<QualityGatePolicy>;
 }
 
@@ -188,8 +188,8 @@ export function summarizeRuntimeTelemetry(events: RuntimeTelemetryEvent[]): Runt
 }
 
 export function summarizeBindingExecutionHistory(
-  records: BindingExecutionRecord[]
-): PresentationExecutionSummary {
+  records: ActionResult[]
+): ViewExecutionSummary {
   let successCount = 0;
   let errorCount = 0;
   let skippedCount = 0;
@@ -308,16 +308,16 @@ export function evaluateQualityGates(input: QualityGateInput): QualityGateEvalua
     policy.minRuntimeEventsPerSecond
   ));
   checks.push(minCheck(
-    'benchmark.presentation.min_patch_ops_per_second',
-    'Presentation patch throughput',
-    input.benchmarks.presentationPatchOpsPerSecond,
-    policy.minPresentationPatchOpsPerSecond
+    'benchmark.view.min_patch_ops_per_second',
+    'View patch throughput',
+    input.benchmarks.viewPatchOpsPerSecond,
+    policy.minViewPatchOpsPerSecond
   ));
   checks.push(minCheck(
-    'benchmark.presentation.min_rebuild_ops_per_second',
-    'Presentation rebuild throughput',
-    input.benchmarks.presentationRebuildOpsPerSecond,
-    policy.minPresentationRebuildOpsPerSecond
+    'benchmark.view.min_rebuild_ops_per_second',
+    'View rebuild throughput',
+    input.benchmarks.viewRebuildOpsPerSecond,
+    policy.minViewRebuildOpsPerSecond
   ));
 
   if (!input.runtimeTelemetry || input.runtimeTelemetry.decodeSampleCount < policy.minDecodeSamples) {
@@ -338,41 +338,41 @@ export function evaluateQualityGates(input: QualityGateInput): QualityGateEvalua
   }
 
   if (
-    !input.presentationExecutions
-    || input.presentationExecutions.optimisticSampleCount < policy.minOptimisticSamples
+    !input.viewExecutions
+    || input.viewExecutions.optimisticSampleCount < policy.minOptimisticSamples
   ) {
     checks.push({
-      id: 'presentation.optimistic.max_rollback_rate',
+      id: 'view.optimistic.max_rollback_rate',
       status: 'skip',
       message: `Not enough optimistic samples (need ${policy.minOptimisticSamples}).`,
-      actual: input.presentationExecutions?.optimisticSampleCount ?? 0,
+      actual: input.viewExecutions?.optimisticSampleCount ?? 0,
       expected: policy.maxOptimisticRollbackRate,
     });
   } else {
     checks.push(maxCheck(
-      'presentation.optimistic.max_rollback_rate',
+      'view.optimistic.max_rollback_rate',
       'Optimistic rollback rate',
-      input.presentationExecutions.optimisticRollbackRate ?? 0,
+      input.viewExecutions.optimisticRollbackRate ?? 0,
       policy.maxOptimisticRollbackRate
     ));
   }
 
   if (
-    !input.presentationExecutions
-    || input.presentationExecutions.totalRecords < policy.minExecutionSamples
+    !input.viewExecutions
+    || input.viewExecutions.totalRecords < policy.minExecutionSamples
   ) {
     checks.push({
-      id: 'presentation.execution.max_stale_skip_rate',
+      id: 'view.execution.max_stale_skip_rate',
       status: 'skip',
       message: `Not enough execution samples (need ${policy.minExecutionSamples}).`,
-      actual: input.presentationExecutions?.totalRecords ?? 0,
+      actual: input.viewExecutions?.totalRecords ?? 0,
       expected: policy.maxStaleSkipRate,
     });
   } else {
     checks.push(maxCheck(
-      'presentation.execution.max_stale_skip_rate',
+      'view.execution.max_stale_skip_rate',
       'Stale interaction skip rate',
-      input.presentationExecutions.staleSkipRate ?? 0,
+      input.viewExecutions.staleSkipRate ?? 0,
       policy.maxStaleSkipRate
     ));
   }
@@ -442,18 +442,18 @@ export function evaluateBenchmarkRegression(
       resolvedPolicy.maxRuntimeDropRatio
     ),
     regressionCheck(
-      'benchmark.presentation.patch.regression',
-      'Presentation patch throughput regression',
-      current.presentationPatchOpsPerSecond,
-      baseline.presentationPatchOpsPerSecond,
-      resolvedPolicy.maxPresentationPatchDropRatio
+      'benchmark.view.patch.regression',
+      'View patch throughput regression',
+      current.viewPatchOpsPerSecond,
+      baseline.viewPatchOpsPerSecond,
+      resolvedPolicy.maxViewPatchDropRatio
     ),
     regressionCheck(
-      'benchmark.presentation.rebuild.regression',
-      'Presentation rebuild throughput regression',
-      current.presentationRebuildOpsPerSecond,
-      baseline.presentationRebuildOpsPerSecond,
-      resolvedPolicy.maxPresentationRebuildDropRatio
+      'benchmark.view.rebuild.regression',
+      'View rebuild throughput regression',
+      current.viewRebuildOpsPerSecond,
+      baseline.viewRebuildOpsPerSecond,
+      resolvedPolicy.maxViewRebuildDropRatio
     ),
   ];
 

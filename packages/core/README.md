@@ -1,6 +1,6 @@
 # @anya-ui/core
 
-Core runtime and orchestration library for Anya UI.
+Core runtime library for Anya UI.
 
 ## Install
 
@@ -11,29 +11,78 @@ npm install @anya-ui/core
 ## Quick Start
 
 ```ts
-import { createAnyaKernel, type UIRenderSpec } from '@anya-ui/core';
+import {
+  createAnyaRuntime,
+  type AppView,
+  type ViewSpec,
+  type ViewTemplate,
+} from '@anya-ui/core';
 
-const kernel = createAnyaKernel({
+const appViews: AppView[] = [
+  {
+    id: 'orders-main',
+    title: 'Orders',
+    workflow: 'orders',
+    spec: {
+      spec_version: 1,
+      layout: 'stack',
+      components: [],
+    },
+  },
+];
+
+const viewTemplates: ViewTemplate[] = [
+  {
+    id: 'orders-summary',
+    title: 'Orders Summary',
+    workflow: 'orders',
+    spec: {
+      spec_version: 1,
+      layout: 'grid',
+      components: [],
+    },
+  },
+];
+
+const runtime = createAnyaRuntime({
   components: [],
-  workflowContexts: [],
+  workflows: [],
+  appViews,
+  viewTemplates,
 });
 
-const spec: UIRenderSpec = {
+const view: ViewSpec = {
   spec_version: 1,
   layout: 'stack',
   components: [],
 };
 
-kernel.applySpec(spec, { source: 'agent' });
+runtime.applyView(view, { source: 'agent' });
+runtime.viewRegistry.listAppViews();
+void runtime.viewRecommendations?.forView({
+  id: 'orders-main',
+  kind: 'app',
+  workflow: 'orders',
+});
 ```
 
 ## Public API Groups
 
+- Components and workflows
+- Views, app views, templates, and actions
+- Shared state
 - Runtime and events
-- Translator encode/decode
-- Presentation planning and application
-- Kernel/orchestrator integration
+- Memory and profile
+- View recommendations from measured interaction behavior
+- View change review/apply helpers for durable app views and templates
 - Quality gate helpers
+- Session artifact helpers
+
+The main entrypoint is view-first. Legacy `presentation` names are no longer exported from `@anya-ui/core`.
+
+The stable/experimental package boundary is documented in:
+
+- `docs/package-boundaries.md`
 
 ## Advanced Usage
 
@@ -54,6 +103,10 @@ import { UiMemoryPipeline } from '@anya-ui/core/experimental';
 
 Experimental exports may change between minor releases.
 
+## Transport Adapters
+
+If you are integrating an external agent runtime, prefer `@anya-ui/adapters` for transport builders and canonical artifact/event helpers instead of writing `AgentSessionTransport` objects by hand.
+
 ## Benchmark
 
 ```bash
@@ -64,3 +117,4 @@ npm run bench --workspace @anya-ui/core
 
 - If ATTW fails only on `node10` entrypoints, run it with `--profile node16` for the supported Node policy (`>=18`).
 - If CJS consumers report type mismatches, ensure `dist-cjs/*.d.cts` files are present after `npm run build`.
+

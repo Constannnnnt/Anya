@@ -11,8 +11,9 @@ import type { ComponentType } from 'react';
 import type { ZodType } from 'zod';
 import type {
   ComponentCapability,
-  UIInteractionMeasurementHint,
-  UIInteractionRecord,
+  ViewBindingTarget,
+  InteractionMeasurementHint,
+  InteractionEvent,
 } from '@anya-ui/core';
 
 // ─── Types ───────────────────────────────────────────────────────────────
@@ -27,9 +28,9 @@ export interface AnyaRenderProps<T = Record<string, unknown>> {
   props: T;
   /** Report an interaction back to the framework */
   onInteraction: (
-    action: UIInteractionRecord['action'],
+    action: InteractionEvent['action'],
     detail?: {
-      trigger?: 'onClick' | 'onDoubleClick' | 'onMouseEnter' | 'onMouseLeave';
+      trigger?: 'onClick' | 'onDoubleClick' | 'onMouseEnter' | 'onMouseLeave' | 'onChange';
       propName?: string;
       previousValue?: unknown;
       newValue?: unknown;
@@ -37,11 +38,11 @@ export interface AnyaRenderProps<T = Record<string, unknown>> {
       sourceId?: string;
       targetIds?: string[];
       targetAction?: string;
-      measurementHint?: UIInteractionMeasurementHint;
+      measurementHint?: InteractionMeasurementHint;
     }
   ) => void;
-  /** Elements this component's state natively binds to */
-  bindTo?: string[];
+  /** Components or data nodes this component's state natively binds to */
+  bindTo?: ViewBindingTarget[];
   /** Children (for nested components) */
   children?: React.ReactNode;
 }
@@ -69,7 +70,7 @@ export interface AnyaComponent<T extends ZodType = ZodType> {
   /** Lifecycle hook called once on unregister */
   onUnregister?: () => void;
   /** Optional per-component interaction hook */
-  onInteraction?: (interaction: UIInteractionRecord) => void;
+  onInteraction?: (interaction: InteractionEvent) => void;
 }
 
 /**
@@ -85,7 +86,7 @@ export interface DefineComponentInput<T extends ZodType = ZodType> {
   capabilities?: ComponentCapability[];
   onRegister?: () => void;
   onUnregister?: () => void;
-  onInteraction?: (interaction: UIInteractionRecord) => void;
+  onInteraction?: (interaction: InteractionEvent) => void;
 }
 
 // ─── Factory ─────────────────────────────────────────────────────────────
@@ -106,3 +107,4 @@ export function defineComponent<T extends ZodType>(
 ): AnyaComponent<T> {
   return { ...input };
 }
+

@@ -1,12 +1,12 @@
-import type { ToolManifest } from '../presentation/types';
-import type { UIRenderSpec } from '../types';
+import type { ActionBinding, ToolDefinition } from '../views/types';
+import type { UIRenderSpec, ViewOrigin } from '../types';
 
 export type ArtifactKind =
   | 'message'
   | 'plan'
   | 'tool_call'
   | 'tool_result'
-  | 'surface'
+  | 'view'
   | 'source_bundle'
   | 'approval_request'
   | 'approval_result'
@@ -69,7 +69,7 @@ export interface ToolCallArtifactPayload {
   toolId: string;
   displayName?: string;
   args: Record<string, unknown>;
-  executionMode?: ToolManifest['execution'];
+  executionMode?: ToolDefinition['execution'];
 }
 
 export interface ToolResultArtifactPayload {
@@ -118,7 +118,7 @@ export interface ErrorArtifactPayload {
   details?: Record<string, unknown>;
 }
 
-export type SurfaceKind =
+export type ViewFormat =
   | 'ui_spec'
   | 'diff'
   | 'table'
@@ -126,25 +126,23 @@ export type SurfaceKind =
   | 'log'
   | 'custom';
 
-export interface SurfaceDescriptor {
-  surfaceKind: SurfaceKind;
-  surfaceId: string;
+export interface ViewDescriptor {
+  id: string;
+  format: ViewFormat;
+  kind?: ViewOrigin;
+  title?: string;
+  workflow?: string;
+  templateId?: string;
   priority?: number;
   replace?: boolean;
-  schema:
-    | {
-        type: 'anya.ui_spec';
-        spec: UIRenderSpec;
-      }
-    | {
-        type: 'custom';
-        rendererId: string;
-        data: Record<string, unknown>;
-      };
+  spec?: UIRenderSpec;
+  bindings?: ActionBinding[];
+  rendererId?: string;
+  data?: Record<string, unknown>;
 }
 
-export interface SurfaceArtifactPayload {
-  surface: SurfaceDescriptor;
+export interface ViewArtifactPayload {
+  view: ViewDescriptor;
 }
 
 export type MessageArtifact = SessionArtifactBase<'message', MessageArtifactPayload>;
@@ -156,7 +154,7 @@ export type ApprovalRequestArtifact = SessionArtifactBase<'approval_request', Ap
 export type ApprovalResultArtifact = SessionArtifactBase<'approval_result', ApprovalResultArtifactPayload>;
 export type MemoryPatchArtifact = SessionArtifactBase<'memory_patch', MemoryPatchArtifactPayload>;
 export type ErrorArtifact = SessionArtifactBase<'error', ErrorArtifactPayload>;
-export type SurfaceArtifact = SessionArtifactBase<'surface', SurfaceArtifactPayload>;
+export type CanonicalViewArtifact = SessionArtifactBase<'view', ViewArtifactPayload>;
 
 export type SessionArtifact =
   | MessageArtifact
@@ -168,7 +166,7 @@ export type SessionArtifact =
   | ApprovalResultArtifact
   | MemoryPatchArtifact
   | ErrorArtifact
-  | SurfaceArtifact;
+  | CanonicalViewArtifact;
 
 export type AgentSessionStatus =
   | 'idle'
@@ -192,7 +190,7 @@ export interface AgentSessionStartInput {
   messages: AgentSessionMessage[];
   memoryContext?: string;
   currentArtifacts?: SessionArtifact[];
-  currentSurfaceId?: string;
+  currentViewId?: string;
 }
 
 export type SessionStartedEvent = {
@@ -271,11 +269,12 @@ export interface AgentSessionState {
   status: AgentSessionStatus;
   artifacts: Record<string, SessionArtifact>;
   artifactOrder: string[];
-  primarySurfaceArtifactId?: string;
+  primaryViewArtifactId?: string;
   lastError?: ErrorArtifactPayload;
   startedAt?: number;
   completedAt?: number;
 }
+export type ViewArtifact = CanonicalViewArtifact;
 
 export type CreateSessionArtifactInput<TKind extends ArtifactKind, TPayload> =
   Omit<SessionArtifactBase<TKind, TPayload>, 'version'> & {

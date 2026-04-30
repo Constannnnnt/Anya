@@ -5,7 +5,8 @@ import {
   type ArtifactRegion,
   type MessageArtifact,
   type SessionArtifact,
-  type SurfaceArtifact,
+  type ViewDescriptor,
+  type ViewArtifact,
 } from './types';
 
 export type AgentSessionReducer = (
@@ -32,10 +33,10 @@ function upsertArtifact(
     sessionId: artifact.sessionId,
     artifacts,
     artifactOrder,
-    primarySurfaceArtifactId: resolvePrimarySurfaceArtifactId(
+    primaryViewArtifactId: resolvePrimaryViewArtifactId(
       artifacts,
       artifactOrder,
-      state.primarySurfaceArtifactId,
+      state.primaryViewArtifactId,
       artifact,
     ),
     completedAt: state.completedAt,
@@ -54,10 +55,12 @@ function removeArtifact(state: AgentSessionState, artifactId: string): AgentSess
     ...state,
     artifacts,
     artifactOrder,
-    primarySurfaceArtifactId: resolvePrimarySurfaceArtifactId(
+    primaryViewArtifactId: resolvePrimaryViewArtifactId(
       artifacts,
       artifactOrder,
-      state.primarySurfaceArtifactId === artifactId ? undefined : state.primarySurfaceArtifactId,
+      state.primaryViewArtifactId === artifactId
+        ? undefined
+        : state.primaryViewArtifactId,
     ),
   };
 }
@@ -107,41 +110,46 @@ function appendTextDelta(
   return upsertArtifact(state, artifact, event.timestamp);
 }
 
-function isVisibleSurfaceRegion(region: ArtifactRegion | undefined): boolean {
+function isVisibleViewRegion(region: ArtifactRegion | undefined): boolean {
   return region !== 'hidden';
 }
 
-function isPromotableSurface(artifact: SessionArtifact | undefined): artifact is SurfaceArtifact {
+function getArtifactView(artifact: ViewArtifact): ViewDescriptor {
+  return artifact.payload.view;
+}
+
+function isPromotableView(artifact: SessionArtifact | undefined): artifact is ViewArtifact {
   return Boolean(
     artifact
-    && artifact.kind === 'surface'
-    && isVisibleSurfaceRegion(artifact.region)
+    && artifact.kind === 'view'
+    && isVisibleViewRegion(artifact.region)
     && artifact.status !== 'failed'
     && artifact.status !== 'superseded'
   );
 }
 
-function resolvePrimarySurfaceArtifactId(
+function resolvePrimaryViewArtifactId(
   artifacts: Record<string, SessionArtifact>,
   artifactOrder: string[],
   previousId?: string,
   lastArtifact?: SessionArtifact,
 ): string | undefined {
-  if (isPromotableSurface(lastArtifact)) {
-    const shouldReplace = lastArtifact.payload.surface.replace !== false;
+  if (isPromotableView(lastArtifact)) {
+    const descriptor = getArtifactView(lastArtifact);
+    const shouldReplace = descriptor.replace !== false;
     const prefersMain = !lastArtifact.region || lastArtifact.region === 'main';
     if (!previousId || shouldReplace || prefersMain) {
       return lastArtifact.id;
     }
   }
 
-  if (previousId && isPromotableSurface(artifacts[previousId])) {
+  if (previousId && isPromotableView(artifacts[previousId])) {
     return previousId;
   }
 
   for (let index = artifactOrder.length - 1; index >= 0; index -= 1) {
     const candidate = artifacts[artifactOrder[index]!];
-    if (isPromotableSurface(candidate)) {
+    if (isPromotableView(candidate)) {
       return candidate.id;
     }
   }

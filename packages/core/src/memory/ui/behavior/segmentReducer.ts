@@ -32,7 +32,7 @@ export function reduceBehaviorSegments(
       previous.actorId !== signal.actorId
       || previous.sessionId !== signal.sessionId
       || previous.contextArchetype !== signal.contextArchetype
-      || (previous.uiId && signal.uiId && previous.uiId !== signal.uiId)
+      || (previous.viewId && signal.viewId && previous.viewId !== signal.viewId)
       || signal.ts - previous.ts > maxGapMs;
 
     if (shouldSplit) {

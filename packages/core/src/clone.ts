@@ -4,11 +4,11 @@ import type {
   UIRenderSpec,
 } from './types';
 import type {
-  BindingAction,
-  BindingValueExpression,
-  LocalPatchOperation,
-  UIBinding,
-} from './presentation/types';
+  ActionBinding,
+  ActionCommand,
+  LocalViewChange,
+  ValueExpression,
+} from './views/types';
 
 /**
  * Deep clone helper for serializable runtime state.
@@ -71,25 +71,25 @@ function cloneComponent(component: UIComponentSpec): UIComponentSpec {
     ...(component.interactions
       ? { interactions: component.interactions.map(cloneInteraction) }
       : {}),
-    ...(component.bindTo ? { bindTo: [...component.bindTo] } : {}),
+    ...(component.bindTo ? { bindTo: deepClone(component.bindTo) } : {}),
     ...(component.children
       ? { children: component.children.map(cloneComponent) }
       : {}),
   };
 }
 
-function clonePatchOperation(patch: LocalPatchOperation): LocalPatchOperation {
+function clonePatchOperation(patch: LocalViewChange): LocalViewChange {
   return {
     ...patch,
     ...(patch.props ? { props: deepClone(patch.props) } : {}),
     ...(patch.propName ? { propName: patch.propName } : {}),
     ...(patch.remove ? { remove: true } : {}),
     ...(patch.merge !== undefined ? { merge: patch.merge } : {}),
-    ...(patch.value !== undefined ? { value: deepClone(patch.value) as BindingValueExpression } : {}),
+    ...(patch.value !== undefined ? { value: deepClone(patch.value) as ValueExpression } : {}),
   };
 }
 
-function cloneBindingAction(action: BindingAction): BindingAction {
+function cloneBindingAction(action: ActionCommand): ActionCommand {
   switch (action.type) {
     case 'local_patch':
       return {
@@ -133,7 +133,7 @@ export function cloneRenderSpec(spec: UIRenderSpec): UIRenderSpec {
   };
 }
 
-export function cloneBindings(bindings: UIBinding[]): UIBinding[] {
+export function cloneBindings(bindings: ActionBinding[]): ActionBinding[] {
   return bindings.map((binding) => ({
     ...binding,
     action: cloneBindingAction(binding.action),

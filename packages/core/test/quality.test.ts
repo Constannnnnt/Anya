@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { BindingExecutionRecord, RuntimeTelemetryEvent } from '../src';
+import type { ActionResult, RuntimeTelemetryEvent } from '../src';
 import {
   evaluateBenchmarkRegression,
   evaluateQualityGates,
   summarizeBindingExecutionHistory,
   summarizeRuntimeTelemetry,
-} from '../src';
+} from '../src/internal';
 
 describe('quality helpers', () => {
   it('summarizes runtime telemetry events', () => {
@@ -73,8 +73,8 @@ describe('quality helpers', () => {
     expect(summary.eventsPerSecond).toBeCloseTo(4 / 3, 5);
   });
 
-  it('summarizes presentation execution history', () => {
-    const records: BindingExecutionRecord[] = [
+  it('summarizes view execution history', () => {
+    const records: ActionResult[] = [
       {
         bindingId: 'b-1',
         status: 'success',
@@ -142,8 +142,8 @@ describe('quality helpers', () => {
     const pass = evaluateQualityGates({
       benchmarks: {
         runtimeEventsPerSecond: 700_000,
-        presentationPatchOpsPerSecond: 1_100,
-        presentationRebuildOpsPerSecond: 1_050,
+        viewPatchOpsPerSecond: 1_100,
+        viewRebuildOpsPerSecond: 1_050,
       },
       runtimeTelemetry: {
         totalEvents: 50,
@@ -158,7 +158,7 @@ describe('quality helpers', () => {
         windowMs: 1000,
         eventsPerSecond: 50,
       },
-      presentationExecutions: {
+      viewExecutions: {
         totalRecords: 40,
         successCount: 34,
         errorCount: 4,
@@ -179,8 +179,8 @@ describe('quality helpers', () => {
     const fail = evaluateQualityGates({
       benchmarks: {
         runtimeEventsPerSecond: 200_000,
-        presentationPatchOpsPerSecond: 900,
-        presentationRebuildOpsPerSecond: 900,
+        viewPatchOpsPerSecond: 900,
+        viewRebuildOpsPerSecond: 900,
       },
     });
 
@@ -195,26 +195,26 @@ describe('quality helpers', () => {
     const regression = evaluateBenchmarkRegression(
       {
         runtimeEventsPerSecond: 850,
-        presentationPatchOpsPerSecond: 70,
-        presentationRebuildOpsPerSecond: 130,
+        viewPatchOpsPerSecond: 70,
+        viewRebuildOpsPerSecond: 130,
       },
       {
         runtimeEventsPerSecond: 1_000,
-        presentationPatchOpsPerSecond: 100,
-        presentationRebuildOpsPerSecond: 100,
+        viewPatchOpsPerSecond: 100,
+        viewRebuildOpsPerSecond: 100,
       },
       {
         maxRuntimeDropRatio: 0.1,
-        maxPresentationPatchDropRatio: 0.1,
-        maxPresentationRebuildDropRatio: 0.2,
+        maxViewPatchDropRatio: 0.1,
+        maxViewRebuildDropRatio: 0.2,
       }
     );
 
     expect(regression.passed).toBe(false);
     expect(regression.checks.find((check) => check.id === 'benchmark.runtime.regression')?.status).toBe('fail');
-    expect(regression.checks.find((check) => check.id === 'benchmark.presentation.patch.regression')?.status)
+    expect(regression.checks.find((check) => check.id === 'benchmark.view.patch.regression')?.status)
       .toBe('fail');
-    expect(regression.checks.find((check) => check.id === 'benchmark.presentation.rebuild.regression')?.status)
+    expect(regression.checks.find((check) => check.id === 'benchmark.view.rebuild.regression')?.status)
       .toBe('pass');
   });
 });

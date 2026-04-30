@@ -60,7 +60,7 @@ export {
   createPracticeCurveAnalyzer,
   createReworkFrictionAnalyzer,
   createSteeringLawAnalyzer,
-} from './builtinAnalyzers';
+} from './heuristics';
 export { BehaviorAnalyzerRegistry } from './analyzerRegistry';
 export { BehaviorDirtyTracker } from './dirtyTracker';
 export {

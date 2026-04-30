@@ -5,13 +5,14 @@
 import type {
   AgentState,
   InteractionAction,
-  UIPresentedSurface,
+  UIPresentedView,
   UIInteractionMeasurement,
   ThemeTokens,
   UIInteractionRecord,
   UIRenderSpec,
+  ViewMetadata,
 } from '../types';
-import type { BindingExecutionRecord } from '../presentation/types';
+import type { ActionBinding, ActionResult } from '../views/types';
 
 export type RuntimeEventSource = 'user' | 'agent' | 'system';
 export type IntentUpdateMode = 'auto' | 'continue' | 'replace';
@@ -98,7 +99,7 @@ export type InteractionRecordedEvent = RuntimeEventEnvelope<
 
 export type BindingExecutedEvent = RuntimeEventEnvelope<
   'binding.executed',
-  { record: BindingExecutionRecord }
+  { record: ActionResult }
 >;
 
 export type ToolStartedEvent = RuntimeEventEnvelope<
@@ -152,12 +153,18 @@ export type QaFailedEvent = RuntimeEventEnvelope<
 
 export type SpecDecodedEvent = RuntimeEventEnvelope<
   'spec.decoded',
-  { spec: UIRenderSpec }
+  {
+    spec: UIRenderSpec;
+    view?: ViewMetadata;
+    bindings?: ActionBinding[];
+  }
 >;
 
 export type UiPresentedEvent = RuntimeEventEnvelope<
   'ui.presented',
-  { surface: UIPresentedSurface }
+  {
+    view: UIPresentedView;
+  }
 >;
 
 export type SpecDecodeFailedEvent = RuntimeEventEnvelope<

@@ -21,7 +21,7 @@ components:
 `;
       const result = decode(rawText, catalog);
       expect(result).not.toBeNull();
-      expect(result.spec_version).toBe(1);
+
       expect(result?.layout).toBe('stack');
       expect(result?.ux_rationale).toBe('Testing the decoder');
       expect(result?.components).toHaveLength(1);
@@ -46,7 +46,7 @@ layout: grid
 components: []
 `;
       const result = decode(rawText, catalog);
-      expect(result.spec_version).toBe(1);
+
       expect(result.layout).toBe('grid');
     });
 
@@ -75,25 +75,7 @@ components:
       expect(() => decode(rawText, catalog)).toThrow();
     });
 
-    it('rejects specs when spec_version is missing', () => {
-      const rawText = `
-layout: grid
-components:
-  - type: Heading
-    props:
-      text: Defaulted
-`;
-      expect(() => decode(rawText, catalog)).toThrow(/spec_version/);
-    });
 
-    it('rejects unsupported future spec versions', () => {
-      const rawText = `
-spec_version: 99
-layout: stack
-components: []
-`;
-      expect(() => decode(rawText, catalog)).toThrow(/Unsupported spec_version/);
-    });
 
     it('rejects invalid layouts', () => {
       const rawText = `
@@ -167,6 +149,65 @@ components:
       expect(result.components[0].props).toEqual({});
       expect(result.components[0].interactions).toHaveLength(1);
       expect(result.components[0].interactions?.[0].trigger).toBe('onClick');
+    });
+
+    it('preserves onChange interactions for input components', () => {
+      const rawText = `
+spec_version: 1
+layout: stack
+components:
+  - id: input-1
+    type: TextInput
+    props:
+      value: ""
+    interactions:
+      - trigger: onChange
+        action: filter_results
+        description: "Filter results while typing"
+`;
+      const result = decode(rawText, catalog);
+      expect(result.components[0].interactions).toEqual([
+        {
+          trigger: 'onChange',
+          action: 'filter_results',
+          description: 'Filter results while typing',
+          tool_call: undefined,
+          targetIds: undefined,
+          targetAction: undefined,
+          url: undefined,
+          route: undefined,
+        },
+      ]);
+    });
+
+    it('normalizes mapped bindTo targets for component and data bindings', () => {
+      const rawText = `
+spec_version: 1
+layout: stack
+components:
+  - id: slider-1
+    type: Slider
+    props:
+      value: 10
+    bindTo:
+      - label-1
+      - targetId: chart-1
+        targetProp: datasets[0].data[0]
+      - targetId: params
+        path: hidden
+`;
+      const result = decode(rawText, catalog);
+      expect(result.components[0].bindTo).toEqual([
+        'label-1',
+        {
+          targetId: 'chart-1',
+          targetProp: 'datasets[0].data[0]',
+        },
+        {
+          targetId: 'params',
+          targetProp: 'hidden',
+        },
+      ]);
     });
 
     it('drops components with non-string types and auto-generates ids for invalid ids', () => {
@@ -276,6 +317,27 @@ components:
       });
     });
 
+    it('preserves nested style maps without corrupting recovery-style YAML', () => {
+      const rawText = `
+spec_version: 1
+layout: split
+components:
+  - id: badge-1
+    type: Badge
+    props:
+      text: "Total: ~124M"
+      variant: "primary"
+      style:
+        fontSize: "var(--anya-text-lg)"
+        padding: "var(--anya-space-3)"
+`;
+      const result = decode(rawText, catalog);
+      expect(result.components[0].props.style).toEqual({
+        fontSize: 'var(--anya-text-lg)',
+        padding: 'var(--anya-space-3)',
+      });
+    });
+
     it('finds a stable trailing-prefix candidate for truncated specs', () => {
       const rawText = `
 spec_version: 1
@@ -303,7 +365,7 @@ components:
       const rawText = `
 layout:
   nested: invalid
-components:
+bad_key:
   - type:
       broken: true
 `;

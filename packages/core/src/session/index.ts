@@ -8,7 +8,13 @@ export {
 } from './store';
 export {
   collectAgentSessionEvents,
+  collectAgentSessionState,
   collectArtifactsFromSessionEvents,
+  getViewBindings,
+  getViewDescriptor,
+  getViewSpec,
+  isViewArtifact,
+  resolvePrimaryViewArtifact,
 } from './transport';
 export type {
   AgentSessionController,
@@ -27,6 +33,7 @@ export type {
   ArtifactKind,
   ArtifactRegion,
   ArtifactUpsertedEvent,
+  CanonicalViewArtifact,
   ErrorArtifact,
   ErrorArtifactPayload,
   MessageArtifact,
@@ -46,10 +53,10 @@ export type {
   SourceBundleArtifact,
   SourceBundleArtifactPayload,
   SourceRef,
-  SurfaceArtifact,
-  SurfaceArtifactPayload,
-  SurfaceDescriptor,
-  SurfaceKind,
+  ViewArtifact,
+  ViewArtifactPayload,
+  ViewDescriptor,
+  ViewFormat,
   TextDeltaEvent,
   ToolCallArtifact,
   ToolCallArtifactPayload,

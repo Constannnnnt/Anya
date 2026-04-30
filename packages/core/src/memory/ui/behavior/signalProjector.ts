@@ -3,9 +3,11 @@ import { asFiniteNumber, asObject, asString, parseJsonObject } from '../payload'
 import type { UiMemoryEvent } from '../schemas';
 import type { BehaviorSignal, InteractionModality } from './schemas';
 
-interface SurfaceContext {
-  uiId?: string;
-  workflowContext?: string;
+interface ViewContext {
+  viewId?: string;
+  viewKind?: 'generated' | 'app';
+  templateId?: string;
+  workflow?: string;
   layout?: string;
 }
 
@@ -62,23 +64,25 @@ const TEXT_COMPONENTS = new Set([
 
 export function projectBehaviorSignals(events: UiMemoryEvent[]): BehaviorSignal[] {
   const sorted = [...events].sort((left, right) => left.ts - right.ts);
-  const surfaceBySession = new Map<string, SurfaceContext>();
+  const viewBySession = new Map<string, ViewContext>();
   const signals: BehaviorSignal[] = [];
 
   for (const event of sorted) {
     if (event.type === 'ui.presented') {
       const payload = parseJsonObject(event.payloadJson);
-      const surface = asObject(payload?.surface);
-      surfaceBySession.set(event.sessionId, {
-        uiId: asString(surface?.uiId) ?? undefined,
-        workflowContext: asString(surface?.workflowContext) ?? undefined,
-        layout: asString(surface?.layout) ?? undefined,
+      const view = asObject(payload?.view);
+      viewBySession.set(event.sessionId, {
+        viewId: asString(view?.id) ?? undefined,
+        viewKind: asString(view?.kind) === 'app' ? 'app' : asString(view?.kind) === 'generated' ? 'generated' : undefined,
+        templateId: asString(view?.templateId) ?? undefined,
+        workflow: asString(view?.workflow) ?? undefined,
+        layout: asString(view?.layout) ?? undefined,
       });
       continue;
     }
 
-    const surface = surfaceBySession.get(event.sessionId);
-    const signal = projectSingleEvent(event, surface);
+    const view = viewBySession.get(event.sessionId);
+    const signal = projectSingleEvent(event, view);
     if (signal) {
       signals.push(signal);
     }
@@ -89,7 +93,7 @@ export function projectBehaviorSignals(events: UiMemoryEvent[]): BehaviorSignal[
 
 function projectSingleEvent(
   event: UiMemoryEvent,
-  surface: SurfaceContext | undefined,
+  view: ViewContext | undefined,
 ): BehaviorSignal | null {
   const payload = parseJsonObject(event.payloadJson);
 
@@ -100,8 +104,8 @@ function projectSingleEvent(
     const componentFamily = asString(measurement?.componentFamily) ?? inferComponentFamily(componentName);
     const actionFamily = asString(measurement?.actionFamily) ?? inferActionFamily(action);
     return {
-      ...createBaseSignal(event, surface),
-      contextArchetype: deriveContextArchetype(surface, componentFamily, actionFamily, asFiniteNumber(measurement?.choiceSetSize)),
+      ...createBaseSignal(event, view),
+      contextArchetype: deriveContextArchetype(view, componentFamily, actionFamily, asFiniteNumber(measurement?.choiceSetSize)),
       componentRole: asString(measurement?.componentRole) ?? undefined,
       componentFamily,
       actionFamily,
@@ -127,8 +131,8 @@ function projectSingleEvent(
     const componentName = asString(interaction?.componentName) ?? 'unknown';
     const action = asString(interaction?.action) ?? 'custom';
     return {
-      ...createBaseSignal(event, surface),
-      contextArchetype: deriveContextArchetype(surface, inferComponentFamily(componentName), inferActionFamily(action)),
+      ...createBaseSignal(event, view),
+      contextArchetype: deriveContextArchetype(view, inferComponentFamily(componentName), inferActionFamily(action)),
       componentFamily: inferComponentFamily(componentName),
       actionFamily: inferActionFamily(action),
       modality: inferModalityFromInteraction(componentName, asString(interaction?.trigger)),
@@ -141,8 +145,8 @@ function projectSingleEvent(
     const interaction = asObject(payload?.interaction);
     const componentName = asString(interaction?.componentName) ?? 'unknown';
     return {
-      ...createBaseSignal(event, surface),
-      contextArchetype: deriveContextArchetype(surface, inferComponentFamily(componentName), 'tool'),
+      ...createBaseSignal(event, view),
+      contextArchetype: deriveContextArchetype(view, inferComponentFamily(componentName), 'tool'),
       componentFamily: inferComponentFamily(componentName),
       actionFamily: 'tool',
       modality: inferModalityFromInteraction(componentName, asString(interaction?.trigger)),
@@ -176,30 +180,30 @@ function inferModalityFromInteraction(
 }
 
 function deriveContextArchetype(
-  surface: SurfaceContext | undefined,
+  view: ViewContext | undefined,
   componentFamily?: string,
   actionFamily?: string,
   choiceSetSize?: number | null,
 ): string {
-  const workflowContext = normalizeWorkflowContext(surface?.workflowContext);
+  const workflow = normalizeWorkflow(view?.workflow);
 
   if (actionFamily === 'drag') return 'arrange_customize';
-  if (containsAny(workflowContext, ['arrange', 'customize', 'personalize', 'configure', 'builder', 'layout'])) {
+  if (containsAny(workflow, ['arrange', 'customize', 'personalize', 'configure', 'builder', 'layout'])) {
     return 'arrange_customize';
   }
-  if (containsAny(workflowContext, ['review', 'confirm', 'approval', 'approve', 'checkout', 'summary'])) {
+  if (containsAny(workflow, ['review', 'confirm', 'approval', 'approve', 'checkout', 'summary'])) {
     return 'review_confirm';
   }
-  if (containsAny(workflowContext, ['compare', 'diff', 'versus'])) {
+  if (containsAny(workflow, ['compare', 'diff', 'versus'])) {
     return 'compare';
   }
-  if (containsAny(workflowContext, ['edit', 'compose', 'form', 'draft'])) {
+  if (containsAny(workflow, ['edit', 'compose', 'form', 'draft'])) {
     return 'edit_compose';
   }
-  if (surface?.layout === 'split') return 'compare';
+  if (view?.layout === 'split') return 'compare';
   if (
     actionFamily === 'navigation'
-    && ((choiceSetSize ?? 0) >= 4 || containsAny(workflowContext, ['search', 'filter', 'discover']))
+    && ((choiceSetSize ?? 0) >= 4 || containsAny(workflow, ['search', 'filter', 'discover']))
   ) {
     return 'search_filter';
   }
@@ -238,17 +242,19 @@ function inferActionFamily(action: string): string {
 
 function createBaseSignal(
   event: UiMemoryEvent,
-  surface: SurfaceContext | undefined,
+  view: ViewContext | undefined,
 ) {
   return {
     id: nextGeneratedId('bsig'),
     actorId: event.actorId,
     sessionId: event.sessionId,
-    uiId: surface?.uiId,
+    viewId: view?.viewId,
+    viewKind: view?.viewKind,
+    templateId: view?.templateId,
     sourceEventId: event.id,
     sourceEventType: event.type,
     ts: event.ts,
-    workflowContext: surface?.workflowContext,
+    workflow: view?.workflow,
   };
 }
 
@@ -256,8 +262,8 @@ function normalizeComponentName(componentName: string): string {
   return componentName.toLowerCase();
 }
 
-function normalizeWorkflowContext(workflowContext?: string): string {
-  return workflowContext?.toLowerCase().trim() ?? '';
+function normalizeWorkflow(workflow?: string): string {
+  return workflow?.toLowerCase().trim() ?? '';
 }
 
 function containsAny(value: string, patterns: string[]): boolean {

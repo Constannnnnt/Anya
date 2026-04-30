@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateInteractionResolvability } from '../src/presentation/interactionQA';
+import { validateInteractionResolvability } from '../src/views/interactionQA';
 import type { UIRenderSpec } from '../src/types';
 
 function makeSpec(components: UIRenderSpec['components']): UIRenderSpec {
@@ -124,6 +124,30 @@ describe('validateInteractionResolvability', () => {
     expect(result.valid).toBe(false);
     expect(result.failures).toHaveLength(1);
     expect(result.failures[0].code).toBe('target_reference_missing');
+  });
+
+  it('fails ambiguous mutation-style targetAction shorthands', () => {
+    const spec = makeSpec([
+      {
+        id: 'btn-reset',
+        type: 'Button',
+        props: { text: 'Reset to Zero' },
+        interactions: [
+          {
+            trigger: 'onClick',
+            action: 'reset_to_zero',
+            description: 'Reset slider',
+            targetIds: ['slider-1'],
+            targetAction: 'setValue',
+          },
+        ],
+      },
+      { id: 'slider-1', type: 'Slider', props: { value: 0.9 } },
+    ]);
+
+    const result = validateInteractionResolvability(spec);
+    expect(result.valid).toBe(false);
+    expect(result.failures.some((failure) => failure.code === 'target_action_ambiguous_mutation')).toBe(true);
   });
 
   it('validates components with no interactions as valid', () => {

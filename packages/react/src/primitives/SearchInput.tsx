@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { defineComponent } from '../defineComponent';
 import {
     measureTextInputTarget,
+    splitDynamicInteractions,
     useSyncedState,
     type PrimitiveBehaviorProps,
     type PrimitiveRenderProps,
@@ -29,12 +30,13 @@ export const SearchInput = defineComponent({
     tags: ['form', 'input', 'search'],
     render: ({ id, props, onInteraction }: PrimitiveRenderProps<SearchInputProps>) => {
         const [val, setVal] = useSyncedState(props.value, '');
+        const { containerInteractions } = splitDynamicInteractions(props.dynamicInteractions);
         return (
             <div
                 id={id}
                 className={`anya-search-input-wrapper ${props.className || ''}`}
                 style={props.style}
-                {...props.dynamicInteractions}
+                {...containerInteractions}
             >
                 {props.label && <label className="anya-search-label" htmlFor={`${id}-search`}>{props.label}</label>}
                 <div className="anya-search-input-container">
@@ -50,6 +52,7 @@ export const SearchInput = defineComponent({
                             const newVal = e.target.value;
                             setVal(newVal);
                             onInteraction('value_change', {
+                                trigger: 'onChange',
                                 propName: 'value',
                                 previousValue: val,
                                 newValue: newVal,

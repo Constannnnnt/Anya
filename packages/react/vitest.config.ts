@@ -10,6 +10,7 @@ export default defineConfig({
   resolve: {
     // Force a single React runtime in tests to avoid invalid hook calls.
     alias: {
+      '@anya-ui/core/internal': path.resolve(__dirname, '../core/src/internal.ts'),
       '@anya-ui/core': path.resolve(__dirname, '../core/src/index.ts'),
       react: path.join(rootNodeModules, 'react'),
       'react-dom': path.join(rootNodeModules, 'react-dom'),

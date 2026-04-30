@@ -29,10 +29,11 @@ describe('behavior projectors', () => {
         ts: 1,
         type: 'ui.presented',
         payloadJson: JSON.stringify({
-          surface: {
-            uiId: 'ui-1',
+          view: {
+            id: 'ui-1',
+            kind: 'generated',
             layout: 'split',
-            workflowContext: 'analysis',
+            workflow: 'analysis',
           },
         }),
       }),
@@ -73,8 +74,8 @@ describe('behavior projectors', () => {
     expect(signals).toHaveLength(2);
     expect(signals[0]).toMatchObject({
       sourceEventType: 'interaction.measured',
-      uiId: 'ui-1',
-      workflowContext: 'analysis',
+      viewId: 'ui-1',
+      workflow: 'analysis',
       contextArchetype: 'compare',
       modality: 'keyboard',
       componentFamily: 'input',
@@ -178,10 +179,11 @@ describe('behavior projectors', () => {
         sessionId: 'session-review',
         type: 'ui.presented',
         payloadJson: JSON.stringify({
-          surface: {
-            uiId: 'ui-review',
+          view: {
+            id: 'ui-review',
+            kind: 'generated',
             layout: 'stack',
-            workflowContext: 'review_approval',
+            workflow: 'review_approval',
           },
         }),
       }),
@@ -207,10 +209,11 @@ describe('behavior projectors', () => {
         sessionId: 'session-search',
         type: 'ui.presented',
         payloadJson: JSON.stringify({
-          surface: {
-            uiId: 'ui-search',
+          view: {
+            id: 'ui-search',
+            kind: 'generated',
             layout: 'stack',
-            workflowContext: 'search_catalog',
+            workflow: 'search_catalog',
           },
         }),
       }),
@@ -237,10 +240,11 @@ describe('behavior projectors', () => {
         sessionId: 'session-arrange',
         type: 'ui.presented',
         payloadJson: JSON.stringify({
-          surface: {
-            uiId: 'ui-arrange',
+          view: {
+            id: 'ui-arrange',
+            kind: 'generated',
             layout: 'grid',
-            workflowContext: 'dashboard_customize',
+            workflow: 'dashboard_customize',
           },
         }),
       }),

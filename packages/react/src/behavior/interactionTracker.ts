@@ -1,8 +1,8 @@
 import type {
   InteractionModality,
-  UIInteractionMeasurement,
-  UIInteractionMeasurementHint,
-  UIInteractionRecord,
+  InteractionMeasurement,
+  InteractionMeasurementHint,
+  InteractionEvent,
 } from '@anya-ui/core';
 
 interface PointerPoint {
@@ -18,10 +18,10 @@ interface InteractionTrackerState {
 
 export interface InteractionMeasurementTracker {
   enrich: (
-    interaction: UIInteractionRecord,
-    measurement: UIInteractionMeasurement,
-    measurementHint?: UIInteractionMeasurementHint,
-  ) => UIInteractionMeasurement;
+    interaction: InteractionEvent,
+    measurement: InteractionMeasurement,
+    measurementHint?: InteractionMeasurementHint,
+  ) => InteractionMeasurement;
   reset: () => void;
 }
 
@@ -58,8 +58,8 @@ export function createInteractionMeasurementTracker(): InteractionMeasurementTra
 
 function resolveFocusMoveCount(
   state: InteractionTrackerState,
-  interaction: UIInteractionRecord,
-  measurement: UIInteractionMeasurement,
+  interaction: InteractionEvent,
+  measurement: InteractionMeasurement,
 ): number | undefined {
   if (measurement.focusMovesSinceLast !== undefined) {
     return measurement.focusMovesSinceLast;
@@ -72,7 +72,7 @@ function resolveFocusMoveCount(
 
 function resolveHomingTransitions(
   state: InteractionTrackerState,
-  measurement: UIInteractionMeasurement,
+  measurement: InteractionMeasurement,
 ): number | undefined {
   if (measurement.homingTransitionsSinceLast !== undefined) {
     return measurement.homingTransitionsSinceLast;
@@ -85,7 +85,7 @@ function resolveHomingTransitions(
 
 function resolveTravelDistance(
   previousPoint: PointerPoint | undefined,
-  measurement: UIInteractionMeasurement,
+  measurement: InteractionMeasurement,
   pointerPoint: PointerPoint | undefined,
 ): number | undefined {
   if (measurement.travelPx !== undefined) {
@@ -109,7 +109,7 @@ function shouldTrackPointerPoint(
 }
 
 function getPointerPoint(
-  measurementHint?: UIInteractionMeasurementHint,
+  measurementHint?: InteractionMeasurementHint,
 ): PointerPoint | undefined {
   const x = asFiniteNumber(measurementHint?.pointerX);
   const y = asFiniteNumber(measurementHint?.pointerY);
@@ -160,3 +160,4 @@ function asFiniteNumber(value: unknown): number | undefined {
     ? value
     : undefined;
 }
+

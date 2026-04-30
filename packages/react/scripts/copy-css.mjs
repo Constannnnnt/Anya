@@ -108,6 +108,9 @@ if (!fs.existsSync(distCjsDir)) {
     fs.mkdirSync(distCjsDir, { recursive: true });
 }
 
+const rootCssPath = path.join(process.cwd(), 'index.css');
+const rootCssTypesPath = path.join(process.cwd(), 'index.css.d.ts');
+
 fs.copyFileSync(
     path.join(process.cwd(), 'src/index.css'),
     path.join(distDir, 'index.css')
@@ -131,6 +134,16 @@ fs.writeFileSync(
 fs.writeFileSync(
     path.join(distCjsDir, 'index.css.cjs'),
     "const path = require('node:path');\nmodule.exports = path.join(__dirname, '..', 'dist', 'index.css');\n"
+);
+
+// Node10-style consumers do not read package exports for subpaths, so publish a root shim too.
+fs.copyFileSync(
+    path.join(process.cwd(), 'src/index.css'),
+    rootCssPath
+);
+fs.writeFileSync(
+    rootCssTypesPath,
+    'declare const css: string;\nexport default css;\n'
 );
 
 // Ensure CommonJS build folder is interpreted correctly under a module package.

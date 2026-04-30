@@ -1,7 +1,7 @@
 /**
  * @anya-ui/react — AdaptiveRenderer
  *
- * The core rendering component that takes a UIRenderSpec from your
+ * The core rendering component that takes a ViewSpec from your
  * agent and renders the corresponding React components.
  *
  * Components are auto-resolved from the Provider's registry.
@@ -9,11 +9,11 @@
  */
 
 import React, { type ComponentType } from 'react';
-import { useSnapshot } from 'valtio';
-import { getLogger, normalizeStyleProp, resolveBindingValue, type UIRenderSpec, type UIComponentSpec, type UIInteractionRecord, type UIInteractionDefinition } from '@anya-ui/core';
+import { proxy, useSnapshot } from 'valtio';
+import { getLogger, normalizeStyleProp, resolveBindingValue, type InteractionModality, type ViewSpec, type ViewNode, type InteractionEvent, type InteractionSpec } from '@anya-ui/core';
 import { useAnyaContext } from './Provider';
 import type { AnyaComponent, AnyaRenderProps } from './defineComponent';
-import { measurePointerTarget } from './behavior/telemetry';
+import { measureElementTarget, measurePointerTarget } from './behavior/telemetry';
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
@@ -22,13 +22,18 @@ export type ComponentRegistry = Record<string, ComponentType<AnyaRenderProps<any
 type InteractionDetail = NonNullable<Parameters<AnyaRenderProps['onInteraction']>[1]>;
 type RendererInteractionHandler = (
     componentName: string,
-    record: Omit<UIInteractionRecord, 'timestamp'>,
+    record: Omit<InteractionEvent, 'timestamp'>,
     measurementHint?: InteractionDetail['measurementHint'],
 ) => void;
 
+type ChangeCapableElement =
+    | HTMLInputElement
+    | HTMLTextAreaElement
+    | HTMLSelectElement;
+
 export interface AdaptiveRendererProps {
     /** The UI spec produced by the agent */
-    spec: UIRenderSpec | null;
+    spec: ViewSpec | null;
     /** Optional manual component map (overrides Provider registry) */
     registry?: ComponentRegistry;
     /** Callback when a component reports an interaction */
@@ -60,13 +65,14 @@ export function AdaptiveRenderer({
     // Auto-resolve from Provider if no manual registry
     let resolvedMap: Map<string, ComponentType<any>> | undefined;
     let pluginMap: Map<string, AnyaComponent> | undefined;
-    let dataNodes: any[] = [];
+    const fallbackDataNodes = React.useMemo(() => proxy<any[]>([]), []);
+    let dataNodes: any[] = fallbackDataNodes;
     
     try {
         const ctx = useAnyaContext();
         resolvedMap = ctx.componentMap;
         pluginMap = ctx.pluginMap;
-        dataNodes = ctx.presentation.getState().context.dataNodes;
+        dataNodes = ctx.viewEngine.getState().context.dataNodes;
     } catch {
         // Not in a provider — manual registry required
     }
@@ -79,7 +85,7 @@ export function AdaptiveRenderer({
 
     return (
         <div style={layoutStyle} data-anya-layout={spec.layout}>
-            {spec.components.map((comp: UIComponentSpec) => (
+            {spec.components.map((comp: ViewNode) => (
                 <MemoizedRenderComponent
                     key={comp.id}
                     spec={comp}
@@ -98,9 +104,9 @@ export function AdaptiveRenderer({
 // ─── Internal: Single Component Renderer ─────────────────────────────────
 
 interface RenderComponentProps {
-    spec: UIComponentSpec;
+    spec: ViewNode;
     dataSnap: any;
-    parentSpec?: UIComponentSpec;
+    parentSpec?: ViewNode;
     resolvedMap?: Map<string, ComponentType<any>>;
     pluginMap?: Map<string, AnyaComponent>;
     manualRegistry?: ComponentRegistry;
@@ -163,7 +169,7 @@ function RenderComponent({
     );
 
     // Render children recursively
-    const children = spec.children?.map((child: UIComponentSpec) => (
+    const children = spec.children?.map((child: ViewNode) => (
         <MemoizedRenderComponent
             key={child.id}
             spec={child}
@@ -220,7 +226,7 @@ const MemoizedRenderComponent = React.memo(
 
 // ─── Layout Helpers ──────────────────────────────────────────────────────
 
-function getLayoutStyle(layout: UIRenderSpec['layout']): React.CSSProperties {
+function getLayoutStyle(layout: ViewSpec['layout']): React.CSSProperties {
     switch (layout) {
         case 'row':
             return {
@@ -265,10 +271,10 @@ function getLayoutStyle(layout: UIRenderSpec['layout']): React.CSSProperties {
 }
 
 function buildInteractionRecord(
-    spec: UIComponentSpec,
-    action: UIInteractionRecord['action'],
+    spec: ViewNode,
+    action: InteractionEvent['action'],
     detail?: InteractionDetail,
-): Omit<UIInteractionRecord, 'timestamp'> {
+): Omit<InteractionEvent, 'timestamp'> {
     return {
         elementId: spec.id,
         componentName: spec.type,
@@ -285,9 +291,9 @@ function buildInteractionRecord(
 }
 
 function buildDynamicInteractions(
-    spec: UIComponentSpec,
-    parentSpec: UIComponentSpec | undefined,
-    interactions: UIInteractionDefinition[],
+    spec: ViewNode,
+    parentSpec: ViewNode | undefined,
+    interactions: InteractionSpec[],
     handleInteraction: NonNullable<AnyaRenderProps['onInteraction']>,
 ): Record<string, (event: React.SyntheticEvent) => void> {
     const dynamicInteractions: Record<string, (event: React.SyntheticEvent) => void> = {};
@@ -297,14 +303,27 @@ function buildDynamicInteractions(
     interactionsByTrigger.forEach((triggerInteractions, trigger) => {
         dynamicInteractions[trigger] = (event: React.SyntheticEvent) => {
             event.stopPropagation();
+            const changeDetail = trigger === 'onChange'
+                ? extractChangeInteractionDetail(event)
+                : {};
             const nativeEvent = event.nativeEvent as { clientX?: number; clientY?: number; detail?: number } | undefined;
-            const measurementHint = measurePointerTarget(event.currentTarget, nativeEvent ?? null, {
-                choiceSetSize,
-            });
+            const measurementHint = trigger === 'onChange'
+                ? measureElementTarget(
+                    event.currentTarget,
+                    inferChangeInteractionModality(event.currentTarget),
+                    { choiceSetSize },
+                )
+                : measurePointerTarget(
+                    event.currentTarget,
+                    nativeEvent ?? null,
+                    { choiceSetSize },
+                );
 
             for (const interaction of triggerInteractions) {
-                handleInteraction(interaction.action as UIInteractionRecord['action'], {
+                handleInteraction(interaction.action as InteractionEvent['action'], {
                     trigger: interaction.trigger,
+                    propName: changeDetail.propName,
+                    newValue: changeDetail.newValue,
                     semanticDescription: interaction.description,
                     targetIds: interaction.targetIds,
                     targetAction: interaction.targetAction,
@@ -317,10 +336,66 @@ function buildDynamicInteractions(
     return dynamicInteractions;
 }
 
+function extractChangeInteractionDetail(
+    event: React.SyntheticEvent,
+): Pick<InteractionDetail, 'propName' | 'newValue'> {
+    const target = event.currentTarget as EventTarget | null;
+    if (!isChangeCapableElement(target)) {
+        return {};
+    }
+
+    if (target instanceof HTMLInputElement) {
+        if (target.type === 'checkbox') {
+            return {
+                propName: 'checked',
+                newValue: target.checked,
+            };
+        }
+        if (target.type === 'radio') {
+            return {
+                propName: 'value',
+                newValue: target.value,
+            };
+        }
+    }
+
+    return {
+        propName: 'value',
+        newValue: target.value,
+    };
+}
+
+function inferChangeInteractionModality(
+    target: EventTarget | null,
+): InteractionModality {
+    if (!isChangeCapableElement(target)) {
+        return 'unknown';
+    }
+
+    if (target instanceof HTMLInputElement) {
+        if (target.type === 'checkbox' || target.type === 'radio' || target.type === 'range') {
+            return 'unknown';
+        }
+        return 'keyboard';
+    }
+
+    if (target instanceof HTMLTextAreaElement) {
+        return 'keyboard';
+    }
+
+    return 'unknown';
+}
+
+function isChangeCapableElement(value: EventTarget | null): value is ChangeCapableElement {
+    return value instanceof HTMLInputElement
+        || value instanceof HTMLTextAreaElement
+        || value instanceof HTMLSelectElement;
+}
+
 function groupInteractionsByTrigger(
-    interactions: UIInteractionDefinition[],
-): Map<UIInteractionDefinition['trigger'], UIInteractionDefinition[]> {
-    const grouped = new Map<UIInteractionDefinition['trigger'], UIInteractionDefinition[]>();
+    interactions: InteractionSpec[],
+): Map<InteractionSpec['trigger'], InteractionSpec[]> {
+    const grouped = new Map<InteractionSpec['trigger'], InteractionSpec[]>();
 
     for (const interaction of interactions) {
         const existing = grouped.get(interaction.trigger);
@@ -336,8 +411,8 @@ function groupInteractionsByTrigger(
 }
 
 function deriveDynamicChoiceSetSize(
-    spec: UIComponentSpec,
-    parentSpec?: UIComponentSpec,
+    spec: ViewNode,
+    parentSpec?: ViewNode,
 ): number | undefined {
     const normalizedType = spec.type.toLowerCase();
     if (normalizedType === 'tabs') {
@@ -354,3 +429,4 @@ function deriveDynamicChoiceSetSize(
     );
     return choiceChildren.length >= 2 ? choiceChildren.length : undefined;
 }
+

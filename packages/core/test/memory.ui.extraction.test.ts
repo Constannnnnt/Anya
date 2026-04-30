@@ -153,8 +153,9 @@ describe('buildExtractionContext', () => {
       makeEvent({
         type: 'ui.presented',
         payloadJson: JSON.stringify({
-          surface: {
-            uiId: 'ui-1',
+          view: {
+            id: 'ui-1',
+            kind: 'generated',
             layout: 'stack',
           },
         }),
@@ -240,3 +241,4 @@ describe('buildExtractionContext', () => {
     expect(ctx.workflowContext).toBeNull();
   });
 });
+

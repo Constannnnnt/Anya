@@ -1,17 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import {
-  createBehaviorFinding,
-  createAnyaKernel,
+  createAnyaRuntime,
   createDefaultRuntimeEffects,
   createRuntimeEvent,
-  InMemoryBehaviorStore,
   InMemoryStorage,
+  type RuntimeEffect,
+  type ViewSpec,
+} from '../src/index';
+import {
+  createBehaviorFinding,
+  InMemoryBehaviorStore,
   type BehaviorAnalysisRunCapture,
   type BehaviorAnalyzer,
-  type RuntimeEffect,
-  type UIRenderSpec,
-} from '../src/index';
+} from '../src/experimental';
 
 async function waitForCondition(
   check: () => Promise<boolean> | boolean,
@@ -28,14 +30,14 @@ async function waitForCondition(
   }
 }
 
-describe('createAnyaKernel', () => {
+describe('createAnyaRuntime', () => {
   it('defaults to in-memory storage in non-browser runtimes', () => {
-    const kernel = createAnyaKernel();
+    const kernel = createAnyaRuntime();
     expect(kernel.storage).toBeInstanceOf(InMemoryStorage);
   });
 
   it('builds core services and applies decoded specs through one lifecycle path', () => {
-    const kernel = createAnyaKernel({
+    const kernel = createAnyaRuntime({
       storage: new InMemoryStorage(),
       components: [
         {
@@ -44,7 +46,7 @@ describe('createAnyaKernel', () => {
           propsSchema: z.object({ content: z.string().optional() }),
         },
       ],
-      workflowContexts: [
+      workflows: [
         {
           name: 'analysis',
           description: 'Analyze content',
@@ -53,7 +55,7 @@ describe('createAnyaKernel', () => {
       ],
     });
 
-    const spec: UIRenderSpec = {
+    const spec: ViewSpec = {
       spec_version: 1,
       skill: 'analysis',
       layout: 'stack',
@@ -66,17 +68,17 @@ describe('createAnyaKernel', () => {
       ],
     };
 
-    const result = kernel.applySpec(spec, { source: 'agent', userIntent: 'analyze this' });
+    const result = kernel.applyView(spec, { source: 'agent', userIntent: 'analyze this' });
 
     expect(result.bindings).toHaveLength(0);
-    expect(kernel.memory.getContext().userIntent).toBe('analyze this');
-    expect(kernel.memory.getContext().workflowContext).toBe('analysis');
-    expect(kernel.presentation.getState().context.workflowContext).toBe('analysis');
-    expect(kernel.presentation.getState().currentSpec?.skill).toBe('analysis');
+    expect(kernel.sessionMemory.getContext().userIntent).toBe('analyze this');
+    expect(kernel.sessionMemory.getContext().workflowContext).toBe('analysis');
+    expect(kernel.viewEngine.getState().context.workflowContext).toBe('analysis');
+    expect(kernel.viewEngine.getState().currentSpec?.skill).toBe('analysis');
   });
 
   it('supports default runtime effects wiring for intent/spec/interaction events', async () => {
-    const kernel = createAnyaKernel({
+    const kernel = createAnyaRuntime({
       storage: new InMemoryStorage(),
       components: [
         {
@@ -89,9 +91,9 @@ describe('createAnyaKernel', () => {
 
     const onThemeUpdated = vi.fn();
     const effects: RuntimeEffect[] = createDefaultRuntimeEffects({
-      memory: kernel.memory,
-      profile: kernel.profile,
-      presentation: kernel.presentation,
+      memory: kernel.sessionMemory,
+      profile: kernel.userProfile,
+      viewEngine: kernel.viewEngine,
       onThemeUpdated,
     });
     kernel.runtime.replaceEffects(effects);
@@ -100,8 +102,8 @@ describe('createAnyaKernel', () => {
       userIntent: 'investigate issue',
     }, { source: 'user' }));
 
-    expect(kernel.memory.getContext().userIntent).toBe('investigate issue');
-    expect(kernel.presentation.getState().context.newUserContext).toBe('investigate issue');
+    expect(kernel.sessionMemory.getContext().userIntent).toBe('investigate issue');
+    expect(kernel.viewEngine.getState().context.newUserContext).toBe('investigate issue');
 
     kernel.runtime.dispatch(createRuntimeEvent('spec.decoded', {
       spec: {
@@ -112,8 +114,8 @@ describe('createAnyaKernel', () => {
       },
     }, { source: 'agent' }));
 
-    expect(kernel.memory.getContext().workflowContext).toBe('triage');
-    expect(kernel.presentation.getState().context.workflowContext).toBe('triage');
+    expect(kernel.sessionMemory.getContext().workflowContext).toBe('triage');
+    expect(kernel.viewEngine.getState().context.workflowContext).toBe('triage');
 
     kernel.runtime.dispatch(createRuntimeEvent('interaction.recorded', {
       record: {
@@ -124,8 +126,8 @@ describe('createAnyaKernel', () => {
       },
     }, { source: 'user' }));
 
-    expect(kernel.memory.getInteractions()).toHaveLength(1);
-    expect(kernel.presentation.getState().context.sessionHistory).toHaveLength(1);
+    expect(kernel.sessionMemory.getInteractions()).toHaveLength(1);
+    expect(kernel.viewEngine.getState().context.sessionHistory).toHaveLength(1);
 
     kernel.runtime.dispatch(createRuntimeEvent('theme.updated', {
       tokens: { 'bg-primary': '#111111' },
@@ -135,7 +137,7 @@ describe('createAnyaKernel', () => {
   });
 
   it('emits preference.explicit runtime event when decoded spec includes profile observation', async () => {
-    const kernel = createAnyaKernel({
+    const kernel = createAnyaRuntime({
       storage: new InMemoryStorage(),
       components: [
         {
@@ -147,9 +149,9 @@ describe('createAnyaKernel', () => {
     });
 
     const effects: RuntimeEffect[] = createDefaultRuntimeEffects({
-      memory: kernel.memory,
-      profile: kernel.profile,
-      presentation: kernel.presentation,
+      memory: kernel.sessionMemory,
+      profile: kernel.userProfile,
+      viewEngine: kernel.viewEngine,
     });
     kernel.runtime.replaceEffects(effects);
 
@@ -208,12 +210,12 @@ describe('createAnyaKernel', () => {
       },
     }));
 
-    const kernel = createAnyaKernel({ storage });
+    const kernel = createAnyaRuntime({ storage });
     await kernel.hydrate();
 
-    expect(kernel.presentation.getState().bindings).toHaveLength(1);
+    expect(kernel.viewEngine.getState().bindings).toHaveLength(1);
 
-    const records = await kernel.presentation.executeInteraction({
+    const records = await kernel.viewEngine.executeInteraction({
       timestamp: Date.now(),
       elementId: 'btn',
       componentName: 'Button',
@@ -225,7 +227,7 @@ describe('createAnyaKernel', () => {
     expect(records).toHaveLength(1);
     expect(records[0].status).toBe('success');
 
-    const target = kernel.presentation
+    const target = kernel.viewEngine
       .getState()
       .currentSpec
       ?.components.find((component) => component.id === 'target');
@@ -257,7 +259,7 @@ describe('createAnyaKernel', () => {
         return '[]';
       });
 
-    const kernel = createAnyaKernel({
+    const kernel = createAnyaRuntime({
       storage,
       uiMemory: {
         enabled: true,
@@ -334,7 +336,7 @@ describe('createAnyaKernel', () => {
       return '[]';
     });
 
-    const kernel = createAnyaKernel({
+    const kernel = createAnyaRuntime({
       storage,
       uiMemory: {
         enabled: true,
@@ -411,7 +413,7 @@ describe('createAnyaKernel', () => {
   });
 
   it('selects a uiMemory store from policy when store is not provided', async () => {
-    const kernel = createAnyaKernel({
+    const kernel = createAnyaRuntime({
       storage: new InMemoryStorage(),
       uiMemory: {
         enabled: true,
@@ -466,7 +468,7 @@ describe('createAnyaKernel', () => {
       }),
     };
 
-    const kernel = createAnyaKernel({
+    const kernel = createAnyaRuntime({
       storage: new InMemoryStorage(),
       uiMemory: {
         enabled: true,
@@ -496,11 +498,12 @@ describe('createAnyaKernel', () => {
     });
 
     kernel.runtime.dispatch(createRuntimeEvent('ui.presented', {
-      surface: {
-        uiId: 'ui-kernel',
-        surfaceHash: 'ui-kernel',
+      view: {
+        id: 'ui-kernel',
+        kind: 'generated',
         layout: 'split',
-        workflowContext: 'analysis',
+        workflow: 'analysis',
+        fingerprint: 'ui-kernel',
         componentCount: 2,
         interactiveCount: 1,
         actionableCount: 1,
@@ -571,7 +574,7 @@ describe('createAnyaKernel', () => {
       }),
     };
 
-    const kernel = createAnyaKernel({
+    const kernel = createAnyaRuntime({
       storage: new InMemoryStorage(),
       uiMemory: {
         enabled: true,
@@ -596,14 +599,15 @@ describe('createAnyaKernel', () => {
       },
     });
 
-    kernel.memory.setContext({ workflowContext: 'compare' });
+    kernel.sessionMemory.setContext({ workflowContext: 'compare' });
 
     kernel.runtime.dispatch(createRuntimeEvent('ui.presented', {
-      surface: {
-        uiId: 'ui-local-adaptation',
-        surfaceHash: 'ui-local-adaptation',
+      view: {
+        id: 'ui-local-adaptation',
+        kind: 'generated',
         layout: 'split',
-        workflowContext: 'compare',
+        workflow: 'compare',
+        fingerprint: 'ui-local-adaptation',
         componentCount: 2,
         interactiveCount: 1,
         actionableCount: 1,
@@ -633,15 +637,15 @@ describe('createAnyaKernel', () => {
 
     expect(await kernel.uiMemoryStore!.findReflections('actor-local-adaptation')).toHaveLength(0);
 
-    const priors = await kernel.orchestrator.getUiMemoryPriors();
+    const priors = await kernel.agentBridge.getUiMemoryPriors();
     expect(priors).toContain('### Measured Interaction Signals');
     expect(priors).toContain('Repeated comparison friction.');
     expect(priors).toContain('Keep primary comparison actions closer together and reduce pane switching.');
   });
 
-  it('advances the behavior cursor for behavior-trigger windows that contain no projectable signals or surface context', async () => {
+  it('advances the behavior cursor for behavior-trigger windows that contain no projectable signals or view context', async () => {
     const captures: BehaviorAnalysisRunCapture[] = [];
-    const kernel = createAnyaKernel({
+    const kernel = createAnyaRuntime({
       storage: new InMemoryStorage(),
       uiMemory: {
         enabled: true,
@@ -679,7 +683,7 @@ describe('createAnyaKernel', () => {
   });
 
   it('retains ui.presented context until a later projectable behavior event arrives', async () => {
-    const kernel = createAnyaKernel({
+    const kernel = createAnyaRuntime({
       storage: new InMemoryStorage(),
       uiMemory: {
         enabled: true,
@@ -694,11 +698,12 @@ describe('createAnyaKernel', () => {
 
     const presentedEventId = 'evt-presented-context';
     kernel.runtime.dispatch(createRuntimeEvent('ui.presented', {
-      surface: {
-        uiId: 'ui-context',
-        surfaceHash: 'ui-context',
+      view: {
+        id: 'ui-context',
+        kind: 'generated',
         layout: 'split',
-        workflowContext: 'analysis',
+        workflow: 'analysis',
+        fingerprint: 'ui-context',
         componentCount: 2,
         interactiveCount: 1,
         actionableCount: 1,
@@ -736,8 +741,8 @@ describe('createAnyaKernel', () => {
 
     const [signal] = await kernel.uiBehaviorStore!.findSignals('actor-behavior-context');
     expect(signal).toEqual(expect.objectContaining({
-      uiId: 'ui-context',
-      workflowContext: 'analysis',
+      viewId: 'ui-context',
+      workflow: 'analysis',
       contextArchetype: 'compare',
     }));
 
@@ -746,3 +751,5 @@ describe('createAnyaKernel', () => {
     expect(behaviorCursor?.lastProcessedEventId).not.toBe(presentedEventId);
   });
 });
+
+

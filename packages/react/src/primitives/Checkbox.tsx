@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { defineComponent } from '../defineComponent';
 import {
     measureSelectionTarget,
+    splitDynamicInteractions,
     useSyncedState,
     type PrimitiveBehaviorProps,
     type PrimitiveRenderProps,
@@ -27,12 +28,13 @@ export const Checkbox = defineComponent({
     tags: ['form', 'input', 'checkbox'],
     render: ({ id, props, onInteraction }: PrimitiveRenderProps<CheckboxProps>) => {
         const [isChecked, setIsChecked] = useSyncedState(props.checked, false);
+        const { containerInteractions } = splitDynamicInteractions(props.dynamicInteractions);
         return (
             <label
                 id={id}
                 className={`anya-checkbox ${isChecked ? 'anya-checkbox-checked' : ''} ${props.disabled ? 'anya-checkbox-disabled' : ''} ${props.className || ''}`}
                 style={props.style}
-                {...props.dynamicInteractions}
+                {...containerInteractions}
             >
                 <input
                     type="checkbox"
@@ -43,6 +45,7 @@ export const Checkbox = defineComponent({
                         const next = !isChecked;
                         setIsChecked(next);
                         onInteraction('value_change', {
+                            trigger: 'onChange',
                             propName: 'checked',
                             previousValue: isChecked,
                             newValue: next,
