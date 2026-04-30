@@ -11,7 +11,7 @@ import {
 } from '@anya-ui/core';
 import type {
   AgentSessionTransport,
-  PresentationPlan,
+  ViewPlan,
 } from '@anya-ui/core';
 
 const mockComponents: AnyaComponent[] = [
@@ -37,9 +37,9 @@ describe('useAnyaUI runtime integration', () => {
       await Promise.resolve();
     });
 
-    act(() => {
+    await act(async () => {
       result.current.setUserIntent('Build a profile editor');
-      result.current.publishSpec({
+      result.current.publishView({
         skill: 'profile_edit',
         layout: 'stack',
         components: [{ id: 'h1', type: 'Heading', props: { text: 'Profile' } }],
@@ -53,7 +53,7 @@ describe('useAnyaUI runtime integration', () => {
       });
     });
 
-    const memory = result.current.context.memory;
+    const memory = result.current.context.sessionMemory;
     expect(memory.getContext().userIntent).toBe('Build a profile editor');
     expect(memory.getContext().workflowContext).toBe('profile_edit');
     expect(memory.getCurrentSpec()?.components[0].id).toBe('h1');
@@ -73,8 +73,8 @@ describe('useAnyaUI runtime integration', () => {
       await Promise.resolve();
     });
 
-    act(() => {
-      result.current.publishSpec({
+    await act(async () => {
+      result.current.publishView({
         skill: 'profile_edit',
         layout: 'stack',
         components: [{ id: 'h1', type: 'Heading', props: { text: 'Profile A' } }],
@@ -88,15 +88,15 @@ describe('useAnyaUI runtime integration', () => {
       });
     });
 
-    act(() => {
+    await act(async () => {
       result.current.setUserIntent('Introduce Sara Hooker', 'replace');
     });
 
-    expect(result.current.context.memory.getCurrentSpec()).toBeNull();
-    expect(result.current.context.memory.getInteractions()).toHaveLength(0);
-    expect(result.current.presentationState.currentSpec).toBeNull();
-    expect(result.current.presentationState.bindings).toHaveLength(0);
-    expect(result.current.context.memory.getContext().userIntent).toBe('Introduce Sara Hooker');
+    expect(result.current.context.sessionMemory.getCurrentSpec()).toBeNull();
+    expect(result.current.context.sessionMemory.getInteractions()).toHaveLength(0);
+    expect(result.current.viewState.currentSpec).toBeNull();
+    expect(result.current.viewState.bindings).toHaveLength(0);
+    expect(result.current.context.sessionMemory.getContext().userIntent).toBe('Introduce Sara Hooker');
   });
 
   it('emits ui.presented and interaction.measured with safe derived telemetry', async () => {
@@ -113,7 +113,8 @@ describe('useAnyaUI runtime integration', () => {
     });
 
     const presentedEvents: Array<{
-      uiId: string;
+      id: string;
+      kind: 'generated' | 'app';
       componentCount: number;
       interactiveCount: number;
       actionableCount: number;
@@ -130,7 +131,7 @@ describe('useAnyaUI runtime integration', () => {
 
     const unsubscribePresented = result.current.subscribeRuntimeEvents('ui.presented', (event) => {
       if (event.type === 'ui.presented') {
-        presentedEvents.push(event.payload.surface);
+        presentedEvents.push(event.payload.view);
       }
     });
     const unsubscribeMeasured = result.current.subscribeRuntimeEvents('interaction.measured', (event) => {
@@ -139,8 +140,8 @@ describe('useAnyaUI runtime integration', () => {
       }
     });
 
-    act(() => {
-      result.current.publishSpec({
+    await act(async () => {
+      result.current.publishView({
         layout: 'stack',
         components: [
           {
@@ -178,13 +179,14 @@ describe('useAnyaUI runtime integration', () => {
 
     expect(presentedEvents).toHaveLength(1);
     expect(presentedEvents[0]).toMatchObject({
+      kind: 'generated',
       componentCount: 1,
       interactiveCount: 1,
       actionableCount: 1,
       componentFamilies: ['text'],
       actionFamilies: ['activate'],
     });
-    expect(presentedEvents[0].uiId).toMatch(/^ui-/);
+    expect(presentedEvents[0].id).toMatch(/^view-/);
 
     expect(measuredEvents).toHaveLength(1);
     expect(measuredEvents[0]).toMatchObject({
@@ -205,7 +207,7 @@ describe('useAnyaUI runtime integration', () => {
     expect(measuredEvents[0].measurement).not.toHaveProperty('newValue');
     expect(measuredEvents[0].measurement).not.toHaveProperty('previousValue');
 
-    const storedInteraction = result.current.context.memory.getRecentInteractions(1)[0];
+    const storedInteraction = result.current.context.sessionMemory.getRecentInteractions(1)[0];
     expect(storedInteraction).toMatchObject({
       elementId: 'input-1',
       componentName: 'TextInput',
@@ -216,7 +218,115 @@ describe('useAnyaUI runtime integration', () => {
     expect(storedInteraction.newValue).toBeUndefined();
   });
 
-  it('starts an agent session and applies the emitted surface to runtime state', async () => {
+  it('can publish an app view with explicit view metadata', async () => {
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <AnyaProvider components={mockComponents}>
+        {children}
+      </AnyaProvider>
+    );
+
+    const { result } = renderHook(() => useAnyaUI(), { wrapper });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const renderedViews: Array<{
+      id: string;
+      kind: 'generated' | 'app';
+      templateId?: string;
+      title?: string;
+    }> = [];
+
+    const unsubscribe = result.current.subscribeRuntimeEvents('ui.presented', (event) => {
+      if (event.type === 'ui.presented') {
+        renderedViews.push(event.payload.view);
+      }
+    });
+
+    await act(async () => {
+      result.current.publishView({
+        skill: 'profile_editor',
+        layout: 'stack',
+        components: [{ id: 'h1', type: 'Heading', props: { text: 'Profile' } }],
+      }, {
+        kind: 'app',
+        id: 'profile-editor-main',
+        title: 'Profile Editor',
+        templateId: 'profile-editor-v1',
+      });
+    });
+
+    unsubscribe();
+
+    expect(renderedViews).toEqual([
+      expect.objectContaining({
+        id: 'profile-editor-main',
+        kind: 'app',
+        title: 'Profile Editor',
+        templateId: 'profile-editor-v1',
+      }),
+    ]);
+  });
+
+  it('loads registered app views and promotes the current view into a template', async () => {
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <AnyaProvider components={mockComponents}>
+        {children}
+      </AnyaProvider>
+    );
+
+    const { result } = renderHook(() => useAnyaUI(), { wrapper });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      result.current.registerAppView({
+        id: 'orders-main',
+        title: 'Orders',
+        workflow: 'orders',
+        spec: {
+          layout: 'stack',
+          components: [{ id: 'orders-heading', type: 'Heading', props: { text: 'Orders' } }],
+        },
+      });
+    });
+
+    await act(async () => {
+      result.current.openAppView('orders-main');
+    });
+
+    expect(result.current.runtimeState.ui.spec?.components[0].id).toBe('orders-heading');
+    expect(result.current.viewState.context.currentView).toEqual(
+      expect.objectContaining({
+        id: 'orders-main',
+        kind: 'app',
+        title: 'Orders',
+        workflow: 'orders',
+      }),
+    );
+
+    let templateId = '';
+    await act(async () => {
+      const template = result.current.saveCurrentViewAsTemplate({
+        id: 'orders-template',
+        title: 'Orders Template',
+      });
+      templateId = template.id;
+    });
+
+    expect(templateId).toBe('orders-template');
+    expect(result.current.listViewTemplates()).toEqual([
+      expect.objectContaining({
+        id: 'orders-template',
+        sourceViewId: 'orders-main',
+      }),
+    ]);
+  });
+
+  it('starts an agent session and applies the emitted view to runtime state', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <AnyaProvider components={mockComponents}>
         {children}
@@ -240,31 +350,31 @@ describe('useAnyaUI runtime integration', () => {
               sessionId,
               timestamp: 2,
               artifact: {
-                id: 'artifact-surface',
+                id: 'artifact-view',
                 sessionId,
-                kind: 'surface' as const,
+                kind: 'view' as const,
                 version: 1,
                 createdAt: 2,
                 audience: 'user' as const,
                 region: 'main' as const,
+                title: 'Transport Heading',
                 payload: {
-                  surface: {
-                    surfaceKind: 'ui_spec' as const,
-                    surfaceId: 'surface-main',
-                    schema: {
-                      type: 'anya.ui_spec' as const,
-                      spec: {
-                        spec_version: 1,
-                        layout: 'stack' as const,
-                        components: [
-                          {
-                            id: 'h-transport',
-                            type: 'Heading',
-                            props: { text: 'Transport Heading' },
-                          },
-                        ],
-                      },
+                  view: {
+                    id: 'transport-main',
+                    format: 'ui_spec' as const,
+                    title: 'Transport Heading',
+                    spec: {
+                      spec_version: 1,
+                      layout: 'stack' as const,
+                      components: [
+                        {
+                          id: 'h-transport',
+                          type: 'Heading',
+                          props: { text: 'Transport Heading' },
+                        },
+                      ],
                     },
+                    bindings: [],
                   },
                 },
               },
@@ -288,23 +398,131 @@ describe('useAnyaUI runtime integration', () => {
         transport,
       });
       const artifacts = collectArtifactsFromSessionEvents(await collectAgentSessionEvents(run));
-      const surface = artifacts.find(
-        (artifact) => artifact.kind === 'surface'
-          && artifact.payload.surface.schema.type === 'anya.ui_spec',
+      const view = artifacts.find(
+        (artifact) => artifact.kind === 'view'
+          && artifact.payload.view.spec,
       );
 
-      if (!surface || surface.kind !== 'surface' || surface.payload.surface.schema.type !== 'anya.ui_spec') {
-        throw new Error('Expected a primary anya.ui_spec surface artifact.');
+      if (!view || view.kind !== 'view' || !view.payload.view.spec) {
+        throw new Error('Expected a primary view artifact with a ui spec.');
       }
 
-      result.current.publishSpec(surface.payload.surface.schema.spec);
+      result.current.publishView(view.payload.view.spec, {
+        kind: view.payload.view.kind ?? 'generated',
+        id: view.payload.view.id,
+        title: view.payload.view.title,
+        workflow: view.payload.view.workflow,
+        bindings: view.payload.view.bindings,
+      });
     });
 
     expect(result.current.runtimeState.ui.spec?.components[0].id).toBe('h-transport');
     expect(result.current.runtimeState.ui.spec?.components[0].props.text).toBe('Transport Heading');
   });
 
-  it('syncs runtime/memory spec after native presentation interaction updates', async () => {
+  it('can finish a session run and promote the primary view artifact into the registry', async () => {
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <AnyaProvider components={mockComponents}>
+        {children}
+      </AnyaProvider>
+    );
+
+    const transport: AgentSessionTransport = {
+      async startSession(input) {
+        const sessionId = input.sessionId ?? 'session-finish';
+        return {
+          sessionId,
+          controller: { cancel() {} },
+          events: (async function* () {
+            yield {
+              type: 'session.started' as const,
+              sessionId,
+              timestamp: 1,
+            };
+            yield {
+              type: 'artifact.upserted' as const,
+              sessionId,
+              timestamp: 2,
+              artifact: {
+                id: 'artifact-view',
+                sessionId,
+                kind: 'view' as const,
+                version: 1,
+                createdAt: 2,
+                audience: 'user' as const,
+                region: 'main' as const,
+                title: 'Artifact View',
+                payload: {
+                  view: {
+                    id: 'artifact-view-main',
+                    format: 'ui_spec' as const,
+                    title: 'Artifact View',
+                    workflow: 'artifact_flow',
+                    spec: {
+                      spec_version: 1,
+                      skill: 'artifact_flow',
+                      layout: 'stack' as const,
+                      components: [
+                        {
+                          id: 'artifact-heading',
+                          type: 'Heading',
+                          props: { text: 'Artifact Heading' },
+                        },
+                      ],
+                    },
+                    bindings: [],
+                  },
+                },
+              },
+            };
+            yield {
+              type: 'session.completed' as const,
+              sessionId,
+              timestamp: 3,
+            };
+          })(),
+        };
+      },
+    };
+
+    const { result } = renderHook(() => useAnyaUI(), { wrapper });
+
+    await act(async () => {
+      const completed = await result.current.runAgentSession({
+        userIntent: 'Open artifact view',
+        messages: [],
+        transport,
+        savePrimaryViewAsApp: {
+          id: 'artifact-app',
+          title: 'Artifact App',
+        },
+        savePrimaryViewAsTemplate: {
+          id: 'artifact-template',
+          title: 'Artifact Template',
+        },
+      });
+
+      expect(completed.primaryViewArtifact?.id).toBe('artifact-view');
+      expect(completed.appView?.id).toBe('artifact-app');
+      expect(completed.viewTemplate?.id).toBe('artifact-template');
+    });
+
+    expect(result.current.runtimeState.ui.spec?.components[0].id).toBe('artifact-heading');
+    expect(result.current.listAppViews()).toEqual([
+      expect.objectContaining({
+        id: 'artifact-app',
+        title: 'Artifact App',
+      }),
+    ]);
+    expect(result.current.listViewTemplates()).toEqual([
+      expect.objectContaining({
+        id: 'artifact-template',
+        title: 'Artifact Template',
+      }),
+    ]);
+  });
+
+  it('syncs runtime and memory after native view interaction updates', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <AnyaProvider components={mockComponents}>
         {children}
@@ -317,7 +535,7 @@ describe('useAnyaUI runtime integration', () => {
       await Promise.resolve();
     });
 
-    const plan: PresentationPlan = {
+    const plan: ViewPlan = {
       mode: 'rebuild',
       confidence: 1,
       ui_spec: {
@@ -346,8 +564,8 @@ describe('useAnyaUI runtime integration', () => {
       ],
     };
 
-    act(() => {
-      result.current.commitPresentationPlan(plan);
+    await act(async () => {
+      result.current.applyViewPlan(plan);
     });
 
     await act(async () => {
@@ -361,9 +579,9 @@ describe('useAnyaUI runtime integration', () => {
       });
     });
 
-    expect(result.current.presentationState.currentSpec?.components[0].props.text).toBe('patched');
+    expect(result.current.viewState.currentSpec?.components[0].props.text).toBe('patched');
     expect(result.current.runtimeState.ui.spec?.components[0].props.text).toBe('patched');
-    expect(result.current.context.memory.getCurrentSpec()?.components[0].props.text).toBe('patched');
+    expect(result.current.context.sessionMemory.getCurrentSpec()?.components[0].props.text).toBe('patched');
   });
 
   it('emits a terminal tool event when a planned tool call becomes stale', async () => {
@@ -390,7 +608,7 @@ describe('useAnyaUI runtime integration', () => {
 
     let release: (() => void) | undefined;
     let unregisterTool: (() => void) | undefined;
-    act(() => {
+    await act(async () => {
       unregisterTool = result.current.registerTool(
         {
           id: 'rotate',
@@ -404,7 +622,7 @@ describe('useAnyaUI runtime integration', () => {
       );
     });
 
-    const plan: PresentationPlan = {
+    const plan: ViewPlan = {
       mode: 'rebuild',
       confidence: 1,
       ui_spec: {
@@ -434,8 +652,8 @@ describe('useAnyaUI runtime integration', () => {
       ],
     };
 
-    act(() => {
-      result.current.commitPresentationPlan(plan);
+    await act(async () => {
+      result.current.applyViewPlan(plan);
     });
 
     await act(async () => {
@@ -455,7 +673,7 @@ describe('useAnyaUI runtime integration', () => {
         throw new Error('Expected tool handler release callback to be initialized.');
       }
 
-      result.current.publishSpec({
+      result.current.publishView({
         layout: 'stack',
         components: [{ id: 'fresh', type: 'Heading', props: { text: 'fresh' } }],
       });
@@ -465,7 +683,7 @@ describe('useAnyaUI runtime integration', () => {
     });
 
     unsubscribe();
-    act(() => {
+    await act(async () => {
       unregisterTool?.();
     });
 
@@ -475,7 +693,7 @@ describe('useAnyaUI runtime integration', () => {
     expect(toolFailures[0]).toContain('stale interaction result');
   });
 
-  it('replaces stale presentation bindings when agent saves a new decoded spec', async () => {
+  it('replaces stale view bindings when agent saves a new decoded spec', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <AnyaProvider components={mockComponents}>
         {children}
@@ -488,7 +706,7 @@ describe('useAnyaUI runtime integration', () => {
       await Promise.resolve();
     });
 
-    const plan: PresentationPlan = {
+    const plan: ViewPlan = {
       mode: 'rebuild',
       confidence: 1,
       ui_spec: {
@@ -512,14 +730,14 @@ describe('useAnyaUI runtime integration', () => {
       ],
     };
 
-    act(() => {
-      result.current.commitPresentationPlan(plan);
+    await act(async () => {
+      result.current.applyViewPlan(plan);
     });
 
-    expect(result.current.getBindings().map((binding) => binding.id)).toContain('stale-binding');
+    expect(result.current.getActionBindings().map((binding) => binding.id)).toContain('stale-binding');
 
-    act(() => {
-      result.current.publishSpec({
+    await act(async () => {
+      result.current.publishView({
         layout: 'stack',
         components: [
           { id: 'fresh', type: 'Heading', props: { text: 'fresh' } },
@@ -527,11 +745,11 @@ describe('useAnyaUI runtime integration', () => {
       });
     });
 
-    expect(result.current.getBindings()).toEqual([]);
-    expect(result.current.presentationState.currentSpec?.components[0].id).toBe('fresh');
+    expect(result.current.getActionBindings()).toEqual([]);
+    expect(result.current.viewState.currentSpec?.components[0].id).toBe('fresh');
   });
 
-  it('supports workflowContext naming for presentation planning', async () => {
+  it('supports workflowContext naming for view planning', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <AnyaProvider components={mockComponents}>
         {children}
@@ -544,18 +762,18 @@ describe('useAnyaUI runtime integration', () => {
       await Promise.resolve();
     });
 
-    act(() => {
+    await act(async () => {
       result.current.setWorkflowContext('analysis');
-      result.current.setPresentationData([
+      result.current.setViewData([
         { id: 'doc-1', kind: 'document', payload: { title: 'Doc', content: 'Alpha' } },
       ]);
     });
 
-    let plan: ReturnType<typeof result.current.planPresentation>;
-    act(() => {
-      plan = result.current.planPresentation();
+    let plan: ReturnType<typeof result.current.planView>;
+    await act(async () => {
+      plan = result.current.planView();
     });
     expect(plan!.ui_spec.skill).toBe('analysis');
-    expect(result.current.presentationState.context.workflowContext).toBe('analysis');
+    expect(result.current.viewState.context.workflowContext).toBe('analysis');
   });
 });
