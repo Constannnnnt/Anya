@@ -119,6 +119,7 @@ export interface AnyaRuntimeConfig {
       aggregateWindowMs?: number;
       syncTimeoutMs?: number;
       captureSnapshots?: boolean;
+      materializationThreshold?: number;
       onCapture?: (capture: BehaviorAnalysisRunCapture) => void;
     };
   };
@@ -301,11 +302,21 @@ export function createAnyaRuntime(config?: AnyaRuntimeConfig): AnyaRuntime {
         behaviorStore: uiBehaviorStore,
         analyzers: config.uiMemory.behavior.analyzers,
         schedulerPolicy: config.uiMemory.behavior.schedulerPolicy,
-        interpreterPolicy: config.uiMemory.behavior.interpreterPolicy,
+        interpreterPolicy: config.uiMemory.behavior.interpreterPolicy ?? (config.uiMemory.behavior.materializationThreshold !== undefined ? {
+          ...DEFAULT_FINDING_INTERPRETER_POLICY,
+          allowResolvedMemoryPromotion: true,
+          promotionRules: {
+            preference_candidate: { confidenceMin: config.uiMemory.behavior.materializationThreshold, supportMin: 1 },
+            pattern_candidate: { confidenceMin: config.uiMemory.behavior.materializationThreshold, supportMin: 1 },
+            reflection_candidate: { confidenceMin: config.uiMemory.behavior.materializationThreshold, supportMin: 1 },
+          },
+        } : undefined),
         windowConfig: config.uiMemory.behavior.windowConfig ?? config.uiMemory.windowConfig,
         aggregateWindowMs: config.uiMemory.behavior.aggregateWindowMs,
         syncTimeoutMs: config.uiMemory.behavior.syncTimeoutMs ?? config.uiMemory.syncTimeoutMs,
         captureSnapshots: config.uiMemory.behavior.captureSnapshots,
+        profile: userProfile,
+        materializeProfile: config.uiMemory.materializeProfile ?? true,
       };
       uiBehaviorPipeline = new UiBehaviorPipeline(behaviorConfig);
       uiBehaviorPipeline.setOnCapture(config.uiMemory.behavior.onCapture);
@@ -358,6 +369,10 @@ export function createAnyaRuntime(config?: AnyaRuntimeConfig): AnyaRuntime {
       availableWorkflows: workflowRegistry.list(),
     },
   });
+
+  if (uiBehaviorPipeline) {
+    (uiBehaviorPipeline as any).config.viewEngine = viewEngine;
+  }
 
   const applyView: AnyaRuntime['applyView'] = (spec, options) => {
     const result = applyDecodedSpec(

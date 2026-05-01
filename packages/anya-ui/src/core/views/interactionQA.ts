@@ -1,5 +1,5 @@
 /**
- * ../../core — Interaction QA Validator
+ * ../../core �?Interaction QA Validator
  *
  * Pre-publish contract check for interactive elements.
  * Validates that every interaction in a ViewSpec has an executable path.
@@ -18,7 +18,7 @@ export type InteractionQAFailureCode =
 
 export interface InteractionQAFailure {
   nodeId: string;
-  componentType: string;
+  nodeType: string;
   interactionIndex: number;
   code: InteractionQAFailureCode;
   message: string;
@@ -32,15 +32,15 @@ export interface InteractionQAResult {
 export interface InteractionQAOptions {
   /** Set of known tool names. If provided, validates tool_call names. */
   knownTools?: Set<string>;
-  /** Set of known component IDs in the current spec. Auto-computed if not provided. */
-  knownComponentIds?: Set<string>;
+  /** Set of known node IDs in the current spec. Auto-computed if not provided. */
+  knownNodeIds?: Set<string>;
 }
 
 // ─── Validator ───────────────────────────────────────────────────────────
 
 /**
  * Validate that all interactive elements in a spec have resolvable actions.
- * Checks the resolution precedence: tool_call → targetIds+targetAction → url/route.
+ * Checks the resolution precedence: tool_call �?targetIds+targetAction �?url/route.
  */
 export function validateInteractionResolvability(
   spec: ViewSpec,
@@ -50,7 +50,7 @@ export function validateInteractionResolvability(
 
   // Collect all component IDs for target reference validation
   const knownIds =
-    options?.knownComponentIds ?? collectComponentIds(spec.nodes);
+    options?.knownNodeIds ?? collectNodeIds(spec.nodes);
   const knownTools = options?.knownTools;
 
   walkComponents(spec.nodes, (component) => {
@@ -60,7 +60,7 @@ export function validateInteractionResolvability(
       const interaction = component.interactions[i];
       const context = {
         nodeId: component.id!,
-        componentType: component.type,
+        nodeType: component.type,
         interactionIndex: i,
       };
 
@@ -78,7 +78,7 @@ export function validateInteractionResolvability(
 
 function validateInteraction(
   interaction: UIInteractionDefinition,
-  context: { nodeId: string; componentType: string; interactionIndex: number },
+  context: { nodeId: string; nodeType: string; interactionIndex: number },
   knownIds: Set<string>,
   knownTools: Set<string> | undefined,
   failures: InteractionQAFailure[],
@@ -157,7 +157,7 @@ function isAmbiguousMutationTargetAction(targetAction: string): boolean {
     || normalized.startsWith('assign');
 }
 
-function collectComponentIds(nodes: ViewNode[]): Set<string> {
+function collectNodeIds(nodes: ViewNode[]): Set<string> {
   const ids = new Set<string>();
   walkComponents(nodes, (c) => ids.add(c.id!));
   return ids;

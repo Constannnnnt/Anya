@@ -14,7 +14,8 @@
     },
     "resolveJsonModule": true,
     "sourceMap": false,
-    "declarationMap": false
+    "declarationMap": false,
+    "removeComments": true
   },
   "include": ["src"],
   "exclude": ["src/**/test", "src/**/*.test.ts", "src/**/*.test.tsx"]

@@ -167,7 +167,7 @@ describe('applyOptimisticUpdate', () => {
     const updated = applyOptimisticUpdate(spec, interaction);
     expect(updated.nodes[1].props.datasets).toEqual([{ label: 'Value', data: [77] }]); });
 
-  it('preserves $data expressions while propagating optimistic values to bound components', () => {
+  it('preserves $data expressions while propagating optimistic values to bound nodes', () => {
     const spec: ViewSpec = {
       layout: 'stack',
       nodes: [

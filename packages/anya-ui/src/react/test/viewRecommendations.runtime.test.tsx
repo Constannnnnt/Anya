@@ -8,9 +8,9 @@ import {
   createBehaviorFinding,
   InMemoryBehaviorStore, } from '../../core/experimental';
 import { AnyaProvider, useAnyaUI } from '../index';
-import type { AnyaComponent } from '../defineComponent';
+import type { AnyaNode } from '../defineComponent';
 
-const components: AnyaComponent[] = [
+const nodes: AnyaNode[] = [
   {
     name: 'Heading',
     description: 'Heading component',
@@ -41,7 +41,7 @@ describe('useAnya view recommendations integration', () => {
 
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <AnyaProvider
-        components={components }
+        nodes={nodes }
         uiMemory={{
           enabled: true,
           actorId: 'actor-checkout',
@@ -88,7 +88,7 @@ describe('useAnya view recommendations integration', () => {
 
   it('builds a current-view update request from a recommendation', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <AnyaProvider components={components }>
+      <AnyaProvider nodes={nodes }>
         {children }
       </AnyaProvider>
     );
@@ -132,7 +132,7 @@ describe('useAnya view recommendations integration', () => {
 
   it('runs a recommendation-driven update session for the current view', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <AnyaProvider components={components }>
+      <AnyaProvider nodes={nodes }>
         {children }
       </AnyaProvider>
     );
@@ -225,11 +225,11 @@ describe('useAnya view recommendations integration', () => {
     expect(capturedInput?.currentViewId).toBe('checkout-view');
     expect(capturedInput?.userIntent).toContain('checkout');
     expect(capturedInput?.messages[0]?.content).toContain('Shorten forms');
-    expect(result.current.viewState.currentSpec?.components[0].props.text).toBe('Checkout Revised'); });
+    expect(result.current.viewState.currentSpec?.nodes[0].props.text).toBe('Checkout Revised'); });
 
   it('creates a previewable draft view change without mutating the current view', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <AnyaProvider components={components }>
+      <AnyaProvider nodes={nodes }>
         {children }
       </AnyaProvider>
     );
@@ -325,16 +325,16 @@ describe('useAnya view recommendations integration', () => {
     expect(drafted?.session.primaryViewArtifact?.id).toBe('artifact-view-change-draft');
     expect(drafted?.draft.plan.mode).toBe('rebuild');
     expect(drafted?.draft.proposal.view?.id).toBe('checkout-view');
-    expect(drafted?.preview.spec.components[0].props.text).toBe('Checkout Revised');
-    expect(result.current.viewState.currentSpec?.components[0].props.text).toBe('Checkout');
+    expect(drafted?.preview.spec.nodes[0].props.text).toBe('Checkout Revised');
+    expect(result.current.viewState.currentSpec?.nodes[0].props.text).toBe('Checkout');
 
     const preview = result.current.getViewChangePreview(drafted!.draft);
     expect(preview.draftId).toBe(drafted?.draft.id);
-    expect(preview.spec.components[1].props.text).toBe('Faster checkout'); });
+    expect(preview.spec.nodes[1].props.text).toBe('Faster checkout'); });
 
   it('reviews an accepted draft and applies it to an app view with audit metadata', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <AnyaProvider components={components }>
+      <AnyaProvider nodes={nodes }>
         {children }
       </AnyaProvider>
     );
@@ -454,11 +454,11 @@ describe('useAnya view recommendations integration', () => {
           title: 'Checkout Revised', }),
       ]),
     );
-    expect(result.current.viewState.currentSpec?.components[0].props.text).toBe('Checkout Revised'); });
+    expect(result.current.viewState.currentSpec?.nodes[0].props.text).toBe('Checkout Revised'); });
 
   it('applies an accepted draft to a template without mutating the live view by default', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <AnyaProvider components={components }>
+      <AnyaProvider nodes={nodes }>
         {children }
       </AnyaProvider>
     );
@@ -580,11 +580,11 @@ describe('useAnya view recommendations integration', () => {
           id: 'checkout-template-v2', }),
       ]),
     );
-    expect(result.current.viewState.currentSpec?.components[0].props.text).toBe('Checkout'); });
+    expect(result.current.viewState.currentSpec?.nodes[0].props.text).toBe('Checkout'); });
 
   it('does not allow rejected drafts to be applied', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <AnyaProvider components={components }>
+      <AnyaProvider nodes={nodes }>
         {children }
       </AnyaProvider>
     );

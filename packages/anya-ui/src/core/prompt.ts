@@ -268,7 +268,7 @@ export function buildResponseFormatBlock(format: 'yaml' | 'json'): string {
       '  "layout": "stack",',
       '  "ux_rationale": "Reasoning about layout restructuring",',
       '  "nodes": [',
-      '    { "type": "ComponentName", "props": { ... }, "children": [...] }',
+      '    { "type": "NodeName", "props": { ... }, "children": [...] }',
       '  ]',
       '}',
       '```',
@@ -286,7 +286,7 @@ export function buildResponseFormatBlock(format: 'yaml' | 'json'): string {
     '  bg-primary: "#000000"',
     '  text-primary: "#00ff00"',
     'nodes:',
-    '  - type: ComponentName',
+    '  - type: NodeName',
     '    draggable: true',
     '    props:',
     '      key: value',
@@ -366,8 +366,8 @@ export function buildSelectionPrompt(
     'Respond with ONLY a YAML list:',
     '```',
     'selected_components:',
-    '  - ComponentName1',
-    '  - ComponentName2',
+    '  - NodeName1',
+    '  - NodeName2',
     '```',
   ].join('\n'));
 

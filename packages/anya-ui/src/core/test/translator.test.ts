@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { decode, encode, findStableSpecCandidate, normalizeStyleProp } from '../translator';
 import { NodeCatalog } from '../registry/catalog';
-import { ContextMemoryManager } from '../internal/memory/context';
+import { ContextMemoryManager } from '../memory/context';
 
 describe('Translator', () => {
   const catalog = new NodeCatalog();
@@ -12,7 +12,7 @@ describe('Translator', () => {
       const rawText = `
 spec_version: 1
 layout: stack
-rationale: "Testing the decoder"
+ux_rationale: "Testing the decoder"
 nodes:
   - id: test-1
     type: Heading
@@ -23,7 +23,7 @@ nodes:
       expect(result).not.toBeNull();
 
       expect(result?.layout).toBe('stack');
-      expect(result?.rationale).toBe('Testing the decoder');
+      expect(result?.ux_rationale).toBe('Testing the decoder');
       expect(result?.nodes).toHaveLength(1);
       if (result?.nodes) {
         expect(result.nodes[0].type).toBe('Heading');
@@ -50,11 +50,11 @@ nodes: []
       const rawText = `
 spec_version: 1
 layout: stack
-observation: "User prefers compact card layouts."
+profile_observation: "User prefers compact card layouts."
 nodes: []
 `;
       const result = decode(rawText, catalog);
-      expect(result.observation).toBe('User prefers compact card layouts.'); });
+      expect(result.profile_observation).toBe('User prefers compact card layouts.'); });
 
     it('throws for empty input', () => {
       expect(() => decode("", catalog)).toThrow(/Empty YAML after extraction/); });
@@ -138,7 +138,7 @@ nodes:
       expect(result.nodes[0].interactions).toHaveLength(1);
       expect(result.nodes[0].interactions?.[0].trigger).toBe('onClick'); });
 
-    it('preserves onChange interactions for input components', () => {
+    it('preserves onChange interactions for input nodes', () => {
       const rawText = `
 spec_version: 1
 layout: stack
@@ -159,7 +159,6 @@ nodes:
           action: 'filter_results',
           description: 'Filter results while typing',
           tool_call: undefined,
-          call: undefined,
           targetIds: undefined,
           targetAction: undefined,
           url: undefined,
@@ -193,7 +192,7 @@ nodes:
           targetProp: 'hidden', },
       ]); });
 
-    it('drops components with non-string types and auto-generates ids for invalid ids', () => {
+    it('drops nodes with non-string types and auto-generates ids for invalid ids', () => {
       const rawText = `
 spec_version: 1
 layout: stack
@@ -226,7 +225,7 @@ nodes:
       - trigger: onClick
         action: rotate
         description: "Rotate image"
-        call:
+        tool_call:
           name: rotate-image
           parameters:
             angle: 90

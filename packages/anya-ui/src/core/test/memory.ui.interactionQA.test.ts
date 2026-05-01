@@ -130,7 +130,7 @@ describe('validateInteractionResolvability', () => {
     expect(result.valid).toBe(false);
     expect(result.failures.some((failure) => failure.code === 'target_action_ambiguous_mutation')).toBe(true); });
 
-  it('validates components with no interactions as valid', () => {
+  it('validates nodes with no interactions as valid', () => {
     const spec = makeSpec([
       { id: 'heading-1', type: 'Heading', props: { text: 'Title' } },
     ]);
@@ -237,7 +237,7 @@ describe('validateInteractionResolvability', () => {
     expect(result.valid).toBe(false);
     expect(result.failures.some((failure) => failure.code === 'link_or_route_empty')).toBe(true); });
 
-  it('reports multiple failures across components', () => {
+  it('reports multiple failures across nodes', () => {
     const spec = makeSpec([
       {
         id: 'btn-1',

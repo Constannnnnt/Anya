@@ -16,8 +16,8 @@ const VALID_LAYOUTS = new Set<ViewSpec['layout']>(['stack', 'row', 'grid', 'tabs
 
 export type SpecQAFailureCode =
   | 'layout_invalid'
-  | 'components_empty'
-  | 'component_id_duplicate'
+  | 'nodes_empty'
+  | 'node_id_duplicate'
   | 'button_missing_onclick'
   | InteractionQAFailureCode;
 
@@ -25,7 +25,7 @@ export interface SpecQAFailure {
   code: SpecQAFailureCode;
   message: string;
   nodeId?: string;
-  componentType?: string;
+  nodeType?: string;
   interactionIndex?: number;
 }
 
@@ -63,7 +63,7 @@ export function validateSpecForPublish(
 
   if (!spec.nodes || spec.nodes.length === 0) {
     failures.push({
-      code: 'components_empty',
+      code: 'nodes_empty',
       message: 'Spec has no nodes.',
     });
     return { valid: false, failures };
@@ -74,22 +74,22 @@ export function validateSpecForPublish(
   const knownIds = new Set(idList);
   if (knownIds.size !== idList.length) {
     failures.push({
-      code: 'component_id_duplicate',
-      message: 'Spec contains duplicate component IDs.',
+      code: 'node_id_duplicate',
+      message: 'Spec contains duplicate node IDs.',
     });
   }
 
   if (options?.requireButtonOnClick !== false) {
-    walkComponents(spec.nodes, (component) => {
-      if (component.type !== 'Button') return;
-      const interactions = component.interactions ?? [];
+    walkComponents(spec.nodes, (node) => {
+      if (node.type !== 'Button') return;
+      const interactions = node.interactions ?? [];
       const hasOnClick = interactions.some((entry) => entry.trigger === 'onClick');
       if (!hasOnClick) {
         failures.push({
           code: 'button_missing_onclick',
-          message: `Button '${component.id}' has no onClick interaction.`,
-          nodeId: component.id,
-          componentType: component.type,
+          message: `Button '${node.id}' has no onClick interaction.`,
+          nodeId: node.id,
+          nodeType: node.type,
         });
       }
     });
@@ -97,14 +97,14 @@ export function validateSpecForPublish(
 
   const interaction = validateInteractionResolvability(spec, {
     knownTools: options?.knownTools,
-    knownComponentIds: knownIds,
+    knownNodeIds: knownIds,
   });
   for (const failure of interaction.failures) {
     failures.push({
       code: failure.code,
       message: failure.message,
       nodeId: failure.nodeId,
-      componentType: failure.componentType,
+      nodeType: failure.nodeType,
       interactionIndex: failure.interactionIndex,
     });
   }

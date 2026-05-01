@@ -30,18 +30,16 @@ describe('plugin lifecycle integration', () => {
     let unregister: (() => void) | undefined;
 
     act(() => {
-      unregister = result.current.registerComponent(DynamicPlugin); });
+      unregister = result.current.registerNode(DynamicPlugin); });
 
     expect(onRegister).toHaveBeenCalledTimes(1);
     expect(result.current.context.nodeMap.has('DynamicPlugin')).toBe(true);
-    expect(result.current.context.pluginMap.has('DynamicPlugin')).toBe(true);
 
     act(() => {
       unregister?.(); });
 
     expect(onUnregister).toHaveBeenCalledTimes(1);
-    expect(result.current.context.nodeMap.has('DynamicPlugin')).toBe(false);
-    expect(result.current.context.pluginMap.has('DynamicPlugin')).toBe(false); });
+    expect(result.current.context.nodeMap.has('DynamicPlugin')).toBe(false); });
 
   it('invokes plugin onInteraction hook during renderer interactions', () => {
     const onRegister = vi.fn();
@@ -71,7 +69,7 @@ describe('plugin lifecycle integration', () => {
       ], };
 
     render(
-      <AnyaProvider components={[InteractionPlugin] }>
+      <AnyaProvider nodes={[InteractionPlugin] }>
         <AdaptiveRenderer spec={spec } />
       </AnyaProvider>
     );
@@ -104,9 +102,8 @@ describe('plugin lifecycle integration', () => {
     await act(async () => {
       await Promise.resolve(); });
 
-    expect(() => result.current.registerComponent(RestrictedPlugin)).toThrow(/disallowed capabilities/);
+    expect(() => result.current.registerNode(RestrictedPlugin)).toThrow(/disallowed capabilities/);
 
     expect(onRegister).toHaveBeenCalledTimes(0);
-    expect(result.current.context.nodeMap.has('RestrictedPlugin')).toBe(false);
-    expect(result.current.context.pluginMap.has('RestrictedPlugin')).toBe(false); }); });
+    expect(result.current.context.nodeMap.has('RestrictedPlugin')).toBe(false); }); });
 

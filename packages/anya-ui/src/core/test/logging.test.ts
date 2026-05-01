@@ -4,6 +4,8 @@ import {
   silentLogger,
   setLogger,
   getLogger,
+  setLogLevel,
+  LogLevel,
   Logger } from '../logging';
 
 describe('Logging Utilities', () => {
@@ -14,12 +16,14 @@ describe('Logging Utilities', () => {
     let errorSpy: any;
 
     beforeEach(() => {
+      setLogLevel(LogLevel.DEBUG);
       debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => { });
       infoSpy = vi.spyOn(console, 'info').mockImplementation(() => { });
       warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
       errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { }); });
 
     afterEach(() => {
+      setLogLevel(LogLevel.SILENT);
       vi.restoreAllMocks(); });
 
     it('should call console.debug', () => {

@@ -139,7 +139,7 @@ describe('createAnyaRuntime', () => {
       spec: {
         spec_version: 1,
         layout: 'stack',
-        observation: 'User prefers concise summary cards',
+        profile_observation: 'User prefers concise summary cards',
         nodes: [], }, }, { source: 'agent' }));
 
     await waitForCondition(() => seenTypes.includes('preference.explicit'));

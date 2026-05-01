@@ -18,6 +18,7 @@ import {
   type FindingInterpreterPolicy,
 } from './policy';
 import { integrateBehaviorFindings, type IntegrateBehaviorFindingsResult } from './interpreter';
+import type { AdaptiveProfile } from '../../profile';
 import {
   createBuiltinBehaviorAnalyzers,
 } from './heuristics';
@@ -38,6 +39,9 @@ export interface UiBehaviorPipelineConfig {
   aggregateWindowMs?: number;
   syncTimeoutMs?: number;
   captureSnapshots?: boolean;
+  profile?: AdaptiveProfile;
+  materializeProfile?: boolean;
+  viewEngine?: import('../../../views/engine').ViewEngine;
 }
 
 export interface BehaviorAnalysisRunCapture {
@@ -198,6 +202,20 @@ export class UiBehaviorPipeline {
 
     await this.updateCursor(latest.id, latest.ts);
     await this.emitCapture(schedulerResult, integration);
+
+    if (this.config.materializeProfile && this.config.profile) {
+      const { materializeToProfile } = await import('../materializer');
+      await materializeToProfile(
+        this.config.eventStore,
+        this.config.actorId,
+        this.config.profile,
+      );
+    }
+
+    if (this.config.viewEngine) {
+      const sessionFindings = await this.behaviorStore.findFindings(this.config.actorId);
+      this.config.viewEngine.setContext({ findings: sessionFindings });
+    }
 
     this.config.trigger.reset();
   }

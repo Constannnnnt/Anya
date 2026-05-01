@@ -103,7 +103,7 @@ function RuntimeHarness(props?: {
 describe('view runtime integration', () => {
   it('executes native binding actions through AdaptiveRenderer', async () => {
     render(
-      <AnyaProvider components={builtInPrimitives }>
+      <AnyaProvider nodes={builtInPrimitives }>
         <RuntimeHarness />
       </AnyaProvider>
     );
@@ -120,7 +120,7 @@ describe('view runtime integration', () => {
     const events: Array<{ durationMs: number; records: number }> = [];
 
     render(
-      <AnyaProvider components={builtInPrimitives }>
+      <AnyaProvider nodes={builtInPrimitives }>
         <RuntimeHarness
           onInteractionExecuted={(input) => {
             events.push({
@@ -170,7 +170,7 @@ describe('view runtime integration', () => {
           ], }, }), });
 
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <AnyaProvider components={builtInPrimitives } storage={storage }>
+      <AnyaProvider nodes={builtInPrimitives } storage={storage }>
         {children }
       </AnyaProvider>
     );
@@ -184,11 +184,11 @@ describe('view runtime integration', () => {
     await waitFor(() => {
       expect(result.current.viewState.context.persistentProfile).toContain('Persisted Profile'); });
     await waitFor(() => {
-      expect(result.current.viewState.currentSpec?.components[0].id).toBe('persist-text'); });
+      expect(result.current.viewState.currentSpec?.nodes[0].id).toBe('persist-text'); });
     await waitFor(() => {
-      expect(result.current.runtimeState.ui.spec?.components[0].id).toBe('persist-text'); });
+      expect(result.current.runtimeState.ui.spec?.nodes[0].id).toBe('persist-text'); });
 
-    expect(result.current.viewState.currentSpec?.components[0].id).toBe('persist-text');
+    expect(result.current.viewState.currentSpec?.nodes[0].id).toBe('persist-text');
     expect(result.current.viewState.context.sessionHistory?.[0].semanticDescription)
       .toBe('Viewed restored card');
-    expect(result.current.runtimeState.ui.spec?.components[0].id).toBe('persist-text'); }); });
+    expect(result.current.runtimeState.ui.spec?.nodes[0].id).toBe('persist-text'); }); });

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { ContextMemoryManager } from '../internal/memory/context';
-import { AdaptiveProfile } from '../internal/memory/profile';
+import { ContextMemoryManager } from '../memory/context';
+import { AdaptiveProfile } from '../memory/profile';
 import { InMemoryStorage } from '../storage/memory';
 import type { FileStorage } from '../storage/interface';
 

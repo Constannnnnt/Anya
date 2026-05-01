@@ -2,8 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
 import { NodeCatalog } from '../registry/catalog';
 import { SkillRegistry } from '../registry/skills';
-import { ContextMemoryManager } from '../internal/memory/context';
-import { createOrchestrator } from '../internal/orchestrator';
+import { ContextMemoryManager } from '../memory/context';
+import { createOrchestrator } from '../orchestrator';
 import { collectAgentSessionEvents, createSessionArtifact } from '../session';
 import type {
   AgentSessionStartInput,

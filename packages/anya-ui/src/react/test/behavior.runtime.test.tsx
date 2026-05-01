@@ -42,7 +42,7 @@ describe('behavior runtime measurement integration', () => {
     let ready = false;
 
     render(
-      <AnyaProvider components={builtInPrimitives }>
+      <AnyaProvider nodes={builtInPrimitives }>
         <BehaviorHarness
           spec={{
             layout: 'stack',

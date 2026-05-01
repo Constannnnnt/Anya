@@ -26,7 +26,7 @@ describe('view planner (v0)', () => {
     const plan = planView(context);
     expect(plan.mode).toBe('patch');
     expect(plan.confidence).toBeGreaterThan(0.5);
-    expect(plan.operations?.some((operation) => operation.type === 'upsert_node')).toBe(true); });
+    expect(plan.operations?.some((operation) => operation.type === 'upsert_component')).toBe(true); });
 
   it('uses rebuild mode when there is no current spec', () => {
     const context: ViewContext = {
@@ -111,7 +111,7 @@ describe('view planner (v0)', () => {
       newUserContext: 'continue from the same context', });
 
     expect(plan.mode).toBe('rebuild');
-    expect(plan.rationale).toContain('Workflow context changed'); });
+    expect(plan.rationale_short).toContain('Workflow context changed'); });
 
   it('uses agent candidate spec/bindings when provided', () => {
     const plan = planView({
@@ -143,7 +143,7 @@ describe('view planner (v0)', () => {
     expect(plan.mode).toBe('patch');
     expect(plan.ui_spec.nodes).toHaveLength(2);
     expect(plan.bindings[0].id).toBe('binding-run');
-    expect(plan.rationale).toContain('agent-provided candidate spec'); });
+    expect(plan.rationale_short).toContain('agent-provided candidate spec'); });
 
   it('honors explicit rebuild mode request without keyword parsing', () => {
     const baseProjection = buildViewFromState(
@@ -160,7 +160,7 @@ describe('view planner (v0)', () => {
       requestedMode: 'rebuild', });
 
     expect(plan.mode).toBe('rebuild');
-    expect(plan.rationale).toContain('Requested rebuild mode'); });
+    expect(plan.rationale_short).toContain('Requested rebuild mode'); });
 
   it('supports always_patch planner strategy', () => {
     const plan = planView({
@@ -175,7 +175,7 @@ describe('view planner (v0)', () => {
 
     expect(plan.mode).toBe('patch');
     expect(plan.strategy).toBe('always_patch');
-    expect(plan.rationale).toContain('always_patch'); });
+    expect(plan.rationale_short).toContain('always_patch'); });
 
   it('uses workflowContext with deterministic policy overrides', () => {
     const baseProjection = buildViewFromState(

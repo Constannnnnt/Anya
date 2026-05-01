@@ -3,8 +3,8 @@ import { z } from 'zod';
 import { buildResponseFormatBlock, buildSystemPrompt } from '../prompt';
 import { NodeCatalog } from '../registry/catalog';
 import { SkillRegistry } from '../registry/skills';
-import { ContextMemoryManager } from '../internal/memory/context';
-import { AdaptiveProfile } from '../internal/memory/profile';
+import { ContextMemoryManager } from '../memory/context';
+import { AdaptiveProfile } from '../memory/profile';
 import { InMemoryStorage } from '../storage/memory';
 
 describe('buildSystemPrompt', () => {

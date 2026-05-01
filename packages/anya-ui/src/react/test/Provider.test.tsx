@@ -14,9 +14,9 @@ import {
   type BehaviorAnalyzer, } from '../../core/experimental';
 import type { AgentState } from '../../core';
 import { z } from 'zod';
-import type { AnyaComponent } from '../defineComponent';
+import type { AnyaNode } from '../defineComponent';
 
-const mockComponents: AnyaComponent[] = [
+const mockNodes: AnyaNode[] = [
     {
         name: 'Heading',
         description: 'A test heading component',
@@ -25,7 +25,7 @@ const mockComponents: AnyaComponent[] = [
 ];
 const defaultLogger = getLogger();
 
-const alternateComponents: AnyaComponent[] = [
+const alternateNodes: AnyaNode[] = [
     {
         name: 'Title',
         description: 'A second heading component',
@@ -75,7 +75,7 @@ describe('AnyaProvider & useAnyaContext', () => {
 
     it('provides the framework context when wrapped in AnyaProvider', () => {
         const wrapper = ({ children }: { children: React.ReactNode }) => (
-            <AnyaProvider components={mockComponents }>
+            <AnyaProvider nodes={mockNodes }>
                 {children }
             </AnyaProvider>
         );
@@ -93,7 +93,7 @@ describe('AnyaProvider & useAnyaContext', () => {
         const onFailureBudgetSignal = vi.fn();
         const wrapper = ({ children }: { children: React.ReactNode }) => (
             <AnyaProvider
-                components={mockComponents }
+                nodes={mockNodes }
                 onTelemetryEvent={onTelemetryEvent }
                 onFailureBudgetSignal={onFailureBudgetSignal }
                 failureBudgetPolicy={{
@@ -150,7 +150,7 @@ describe('AnyaProvider & useAnyaContext', () => {
 
         const wrapper = ({ children }: { children: React.ReactNode }) => (
             <AnyaProvider
-                components={mockComponents }
+                nodes={mockNodes }
                 onBehaviorAnalysisRun={onBehaviorAnalysisRun }
                 uiMemory={{
                     enabled: true,
@@ -223,7 +223,7 @@ describe('AnyaProvider & useAnyaContext', () => {
         try {
             const { rerender } = render(
                 <AnyaProvider
-                    components={mockComponents }
+                    nodes={mockNodes }
                     workflows={baseWorkflowContexts }
                     allowedCapabilities={['drag_drop'] }
                     storage={storageA }
@@ -236,7 +236,7 @@ describe('AnyaProvider & useAnyaContext', () => {
 
             rerender(
                 <AnyaProvider
-                    components={alternateComponents }
+                    nodes={alternateNodes }
                     workflows={[
                         {
                             name: 'gallery_review',
@@ -254,7 +254,7 @@ describe('AnyaProvider & useAnyaContext', () => {
             await flushEffects();
 
             const warningMessages = warn.mock.calls.map((call) => String(call[0]));
-            expect(warningMessages.some((message) => message.includes("'components' is mount-only"))).toBe(true);
+            expect(warningMessages.some((message) => message.includes("'nodes' is mount-only"))).toBe(true);
             expect(warningMessages.some((message) => message.includes("'workflows' is mount-only"))).toBe(true);
             expect(warningMessages.some((message) => message.includes("'allowedCapabilities' is mount-only"))).toBe(true);
             expect(warningMessages.some((message) => message.includes("'storage' is mount-only"))).toBe(true);
@@ -267,7 +267,7 @@ describe('AnyaProvider & useAnyaContext', () => {
         try {
             const { rerender } = render(
                 <AnyaProvider
-                    components={[...mockComponents] }
+                    nodes={[...mockNodes] }
                     workflows={[...baseWorkflowContexts] }
                     allowedCapabilities={['drag_drop'] }
                 >
@@ -279,7 +279,7 @@ describe('AnyaProvider & useAnyaContext', () => {
 
             rerender(
                 <AnyaProvider
-                    components={[...mockComponents] }
+                    nodes={[...mockNodes] }
                     workflows={[...baseWorkflowContexts] }
                     allowedCapabilities={['drag_drop'] }
                 >

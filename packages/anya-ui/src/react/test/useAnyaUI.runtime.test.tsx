@@ -4,7 +4,7 @@ import React from 'react';
 import { z } from 'zod';
 import { AnyaProvider } from '../Provider';
 import { useAnyaUI } from '../hooks/useAnyaUI';
-import type { AnyaComponent } from '../defineComponent';
+import type { AnyaNode } from '../defineComponent';
 import {
   collectAgentSessionEvents,
   collectArtifactsFromSessionEvents, } from '../../core';
@@ -14,7 +14,7 @@ import type {
 
 import { InMemoryStorage } from '../../core';
 
-const mockComponents: AnyaComponent[] = [
+const mockNodes: AnyaNode[] = [
   {
     name: 'Heading',
     description: 'A heading component',
@@ -29,7 +29,7 @@ describe('useAnyaUI runtime integration', () => {
 
   it('routes intent/spec/interaction updates through runtime effects', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <AnyaProvider components={mockComponents }>
+      <AnyaProvider nodes={mockNodes }>
         {children }
       </AnyaProvider>
     );
@@ -55,12 +55,12 @@ describe('useAnyaUI runtime integration', () => {
     const memory = result.current.context.sessionMemory;
     expect(memory.getContext().userIntent).toBe('Build a profile editor');
     expect(memory.getContext().workflowContext).toBe('profile_edit');
-    expect(memory.getCurrentSpec()?.components[0].id).toBe('h1');
+    expect(memory.getCurrentSpec()?.nodes[0].id).toBe('h1');
     expect(memory.getRecentInteractions(1)[0].semanticDescription).toBe('Clicked profile title'); });
 
   it('supports replace intent mode to clear volatile UI session context', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <AnyaProvider components={mockComponents }>
+      <AnyaProvider nodes={mockNodes }>
         {children }
       </AnyaProvider>
     );
@@ -93,7 +93,7 @@ describe('useAnyaUI runtime integration', () => {
 
   it('emits ui.presented and interaction.measured with safe derived telemetry', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <AnyaProvider components={mockComponents }>
+      <AnyaProvider nodes={mockNodes }>
         {children }
       </AnyaProvider>
     );
@@ -194,7 +194,7 @@ describe('useAnyaUI runtime integration', () => {
 
   it('can publish an app view with explicit view metadata', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <AnyaProvider components={mockComponents }>
+      <AnyaProvider nodes={mockNodes }>
         {children }
       </AnyaProvider>
     );
@@ -236,7 +236,7 @@ describe('useAnyaUI runtime integration', () => {
 
   it('loads registered app views and promotes the current view into a template', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <AnyaProvider components={mockComponents }>
+      <AnyaProvider nodes={mockNodes }>
         {children }
       </AnyaProvider>
     );
@@ -258,7 +258,7 @@ describe('useAnyaUI runtime integration', () => {
     await act(async () => {
       result.current.openAppView('orders-main'); });
 
-    expect(result.current.runtimeState.ui.spec?.components[0].id).toBe('orders-heading');
+    expect(result.current.runtimeState.ui.spec?.nodes[0].id).toBe('orders-heading');
     expect(result.current.viewState.context.currentView).toEqual(
       expect.objectContaining({
         id: 'orders-main',
@@ -283,7 +283,7 @@ describe('useAnyaUI runtime integration', () => {
 
   it('starts an agent session and applies the emitted view to runtime state', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <AnyaProvider components={mockComponents }>
+      <AnyaProvider nodes={mockNodes }>
         {children }
       </AnyaProvider>
     );
@@ -355,12 +355,12 @@ describe('useAnyaUI runtime integration', () => {
         workflow: view.payload.view.workflow,
         bindings: view.payload.view.bindings, }); });
 
-    expect(result.current.runtimeState.ui.spec?.components[0].id).toBe('h-transport');
-    expect(result.current.runtimeState.ui.spec?.components[0].props.text).toBe('Transport Heading'); });
+    expect(result.current.runtimeState.ui.spec?.nodes[0].id).toBe('h-transport');
+    expect(result.current.runtimeState.ui.spec?.nodes[0].props.text).toBe('Transport Heading'); });
 
   it('can finish a session run and promote the primary view artifact into the registry', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <AnyaProvider components={mockComponents }>
+      <AnyaProvider nodes={mockNodes }>
         {children }
       </AnyaProvider>
     );
@@ -429,7 +429,7 @@ describe('useAnyaUI runtime integration', () => {
       expect(completed.appView?.id).toBe('artifact-app');
       expect(completed.viewTemplate?.id).toBe('artifact-template'); });
 
-    expect(result.current.runtimeState.ui.spec?.components[0].id).toBe('artifact-heading');
+    expect(result.current.runtimeState.ui.spec?.nodes[0].id).toBe('artifact-heading');
     expect(result.current.listAppViews()).toEqual([
       expect.objectContaining({
         id: 'artifact-app',
@@ -443,7 +443,7 @@ describe('useAnyaUI runtime integration', () => {
 
   it('syncs runtime and memory after native view interaction updates', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <AnyaProvider components={mockComponents }>
+      <AnyaProvider nodes={mockNodes }>
         {children }
       </AnyaProvider>
     );
@@ -489,13 +489,13 @@ describe('useAnyaUI runtime integration', () => {
         trigger: 'onClick',
         semanticDescription: 'patched', }); });
 
-    expect(result.current.viewState.currentSpec?.components[0].props.text).toBe('patched');
-    expect(result.current.runtimeState.ui.spec?.components[0].props.text).toBe('patched');
-    expect(result.current.context.sessionMemory.getCurrentSpec()?.components[0].props.text).toBe('patched'); });
+    expect(result.current.viewState.currentSpec?.nodes[0].props.text).toBe('patched');
+    expect(result.current.runtimeState.ui.spec?.nodes[0].props.text).toBe('patched');
+    expect(result.current.context.sessionMemory.getCurrentSpec()?.nodes[0].props.text).toBe('patched'); });
 
   it('emits a terminal tool event when a planned tool call becomes stale', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <AnyaProvider components={mockComponents }>
+      <AnyaProvider nodes={mockNodes }>
         {children }
       </AnyaProvider>
     );
@@ -585,7 +585,7 @@ describe('useAnyaUI runtime integration', () => {
 
   it('replaces stale view bindings when agent saves a new decoded spec', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <AnyaProvider components={mockComponents }>
+      <AnyaProvider nodes={mockNodes }>
         {children }
       </AnyaProvider>
     );
@@ -628,11 +628,11 @@ describe('useAnyaUI runtime integration', () => {
         ], }); });
 
     expect(result.current.getActionBindings()).toEqual([]);
-    expect(result.current.viewState.currentSpec?.components[0].id).toBe('fresh'); });
+    expect(result.current.viewState.currentSpec?.nodes[0].id).toBe('fresh'); });
 
   it('supports workflowContext naming for view planning', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <AnyaProvider components={mockComponents }>
+      <AnyaProvider nodes={mockNodes }>
         {children }
       </AnyaProvider>
     );

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { materializeToProfile } from '../memory/ui/materializer';
 import { InMemoryMemoryStore } from '../memory/ui/inMemoryAdapter';
-import { AdaptiveProfile } from '../internal/memory/profile';
+import { AdaptiveProfile } from '../memory/profile';
 import { InMemoryStorage } from '../storage/memory';
 import type { PreferenceMemory, InteractionPattern, Reflection } from '../memory/ui/schemas';
 

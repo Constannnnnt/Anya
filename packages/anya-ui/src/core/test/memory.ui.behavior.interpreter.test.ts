@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { InMemoryMemoryStore } from '../memory/ui/inMemoryAdapter';
-import { AdaptiveProfile } from '../internal/memory/profile';
+import { AdaptiveProfile } from '../memory/profile';
 import { InMemoryStorage } from '../storage/memory';
 import { RetrievalComposer } from '../memory/ui/retrieval';
 import { materializeToProfile } from '../memory/ui/materializer';

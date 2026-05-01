@@ -6,9 +6,9 @@ import {
   AdaptiveRenderer,
   AnyaProvider,
   useAnyaUI, } from '../index';
-import type { AnyaComponent } from '../defineComponent';
+import type { AnyaNode } from '../defineComponent';
 
-const components: AnyaComponent[] = [
+const nodes: AnyaNode[] = [
   {
     name: 'Heading',
     description: 'Heading component',
@@ -23,7 +23,7 @@ describe('react public API surface', () => {
 
   it('exposes useAnyaUI with the view-first API surface', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <AnyaProvider components={components }>
+      <AnyaProvider nodes={nodes }>
         {children }
       </AnyaProvider>
     );
@@ -49,7 +49,7 @@ describe('react public API surface', () => {
 
   it('lets useAnyaUI update shared state', async () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <AnyaProvider components={components }>
+      <AnyaProvider nodes={nodes }>
         {children }
       </AnyaProvider>
     );

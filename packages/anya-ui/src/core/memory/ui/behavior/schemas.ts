@@ -111,6 +111,7 @@ export const BehaviorFindingSchema = z.object({
   severity: BehaviorFindingSeveritySchema.optional(),
   evidenceRefs: z.array(z.string()),
   payload: z.record(z.unknown()),
+  summary: z.string().optional(),
   createdTs: z.number(),
 });
 export type BehaviorFinding = z.infer<typeof BehaviorFindingSchema>;

@@ -3,7 +3,7 @@ import {
   normalizeMemorySnapshot,
   parseMemorySnapshot,
   serializeMemorySnapshot,
-  type MemorySnapshot, } from '../internal/memory/snapshot';
+  type MemorySnapshot, } from '../memory/snapshot';
 
 describe('memory snapshot schema', () => {
   const validSnapshot: MemorySnapshot = {
@@ -29,7 +29,7 @@ describe('memory snapshot schema', () => {
         timestamp: 1,
         intent: 'Testing snapshots',
         workflowContext: 'snapshot_skill',
-        rationale: 'Keep compact layout',
+        uxRationale: 'Keep compact layout',
         summary: 'workflow=snapshot_skill | ux=Keep compact layout', },
     ],
     currentSpec: {

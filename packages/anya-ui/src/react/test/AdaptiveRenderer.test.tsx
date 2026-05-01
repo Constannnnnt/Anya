@@ -41,7 +41,7 @@ describe('AdaptiveRenderer', () => {
         const { container } = render(<AdaptiveRenderer spec={null } />);
         expect(container.firstChild).toBeNull(); });
 
-    it('renders the unknown-component renderer for unknown components', () => {
+    it('renders the unknown-component renderer for unknown nodes', () => {
         const spec: ViewSpec = {
             layout: 'stack',
             nodes: [
@@ -51,7 +51,7 @@ describe('AdaptiveRenderer', () => {
         render(<AdaptiveRenderer spec={spec } registry={{ } } />);
         expect(screen.getByText('Unknown component:')).toBeTruthy(); });
 
-    it('recursively renders actual components from a manual registry', () => {
+    it('recursively renders actual nodes from a manual registry', () => {
         const spec: ViewSpec = {
             layout: 'stack',
             nodes: [

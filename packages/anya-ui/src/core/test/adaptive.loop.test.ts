@@ -60,7 +60,7 @@ describe('Adaptive Loop Integration (Phase 3)', () => {
     await runtime.uiBehaviorPipeline!.flush('sync');
 
     // 3. Verify Session Memory consolidation
-    const sessionFindings = runtime.sessionMemory.getFindings();
+    const sessionFindings = await runtime.uiBehaviorStore!.findFindings('test-user');
     expect(sessionFindings.length).toBeGreaterThan(0);
     expect(sessionFindings[0].summary).toBe('User is struggling with small targets');
 
@@ -76,8 +76,8 @@ describe('Adaptive Loop Integration (Phase 3)', () => {
       analyzerId: 'practice_curve', // Allowed kind: pattern_candidate
       kind: 'pattern_candidate',
       confidence: 0.95,
-      payload: {
-        summary: 'User consistently prefers dark mode during evening hours', }, });
+      summary: 'User consistently prefers dark mode during evening hours',
+      payload: { }, });
 
     const runtime = createAnyaRuntime({
       uiMemory: {
@@ -108,7 +108,7 @@ describe('Adaptive Loop Integration (Phase 3)', () => {
 
     // 3. Verify User Profile materialization
     const observations = runtime.userProfile.getObservations();
-    expect(observations).toContain('User consistently prefers dark mode during evening hours'); });
+    expect(observations.some(obs => obs.includes('User consistently prefers dark mode during evening hours'))).toBe(true); });
 
   it('does NOT materialize low-confidence patterns', async () => {
     const analyzer = createMockAnalyzer({

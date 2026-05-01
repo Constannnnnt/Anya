@@ -238,6 +238,7 @@ export interface ViewContext {
   projectionNodes?: Partial<ViewNodeSlots>;
   sessionHistory?: UIInteractionRecord[];
   persistentProfile?: string;
+  findings?: import('../memory/ui/behavior/schemas').BehaviorFinding[];
 }
 
 export interface ViewPlan {

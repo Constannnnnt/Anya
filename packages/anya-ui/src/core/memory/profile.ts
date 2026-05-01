@@ -11,6 +11,7 @@
 import type { FileStorage } from '../storage/interface';
 
 const OBSERVATIONS_HEADER = '## Behavioral Observations';
+const LEARNED_PATTERNS_HEADER = '## Learned UI Patterns';
 const OBSERVATIONS_HINT = "(Agent will add observations as it learns the user's patterns)";
 export const OBSERVATION_MERGE_THRESHOLD = 0.72;
 
@@ -89,6 +90,25 @@ interface ParsedObservationSection {
   after: string[];
   observations: string[];
   hasSection: boolean;
+}
+
+function parseSimpleObservations(content: string, header: string): string[] {
+  const lines = normalizeLineEndings(content).split('\n');
+  const headerIndex = lines.findIndex((line) => line.trim() === header);
+
+  if (headerIndex < 0) return [];
+
+  let sectionEnd = lines.length;
+  for (let i = headerIndex + 1; i < lines.length; i += 1) {
+    if (/^##\s+/.test(lines[i].trim())) {
+      sectionEnd = i;
+      break;
+    }
+  }
+
+  return lines.slice(headerIndex + 1, sectionEnd)
+    .map((line) => cleanObservationText(line))
+    .filter((line) => line.length > 0 && !line.includes('(Agent will add') && !line.startsWith('(') && !line.startsWith('###'));
 }
 
 function parseObservationSection(content: string): ParsedObservationSection {
@@ -243,8 +263,10 @@ export class AdaptiveProfile {
 
   /** Get parsed behavioral observations from the current profile */
   getObservations(): string[] {
-    const parsed = parseObservationSection(this.content || this.getDefaultProfile());
-    return parsed.observations;
+    const content = this.content || this.getDefaultProfile();
+    const observations = parseSimpleObservations(content, OBSERVATIONS_HEADER);
+    const learned = parseSimpleObservations(content, LEARNED_PATTERNS_HEADER);
+    return [...observations, ...learned];
   }
 
   /**

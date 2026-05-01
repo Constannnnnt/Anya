@@ -152,7 +152,7 @@ export async function integrateBehaviorFindings(input: {
 }
 
 function toPreference(actorId: string, finding: BehaviorFinding, now: number): PreferenceMemory {
-  const statement = asString(finding.payload.statement) ?? humanizeConceptKey(finding.conceptKey);
+  const statement = asString(finding.payload.statement) ?? finding.summary ?? humanizeConceptKey(finding.conceptKey);
   const category = asString(finding.payload.category) ?? 'interaction';
   return {
     id: nextGeneratedId('pref'),
@@ -172,11 +172,11 @@ function toPreference(actorId: string, finding: BehaviorFinding, now: number): P
 }
 
 function toPattern(actorId: string, finding: BehaviorFinding, now: number): InteractionPattern {
-  const sequenceKey = asString(finding.payload.sequenceKey) ?? humanizeConceptKey(finding.conceptKey);
+  const sequenceKey = asString(finding.payload.sequenceKey) ?? finding.summary ?? humanizeConceptKey(finding.conceptKey);
   const taskClass = deriveTaskClass(finding);
   const sequence = Array.isArray(finding.payload.sequence)
     ? finding.payload.sequence.filter((value): value is string => typeof value === 'string')
-    : sequenceKey.split(' -> ').map((value) => value.trim()).filter(Boolean);
+    : sequenceKey.split(' -> ').map((value: string) => value.trim()).filter(Boolean);
   const outcome = finding.payload.outcome === 'failure' ? 'failure' : 'success';
   return {
     id: nextGeneratedId('pat'),

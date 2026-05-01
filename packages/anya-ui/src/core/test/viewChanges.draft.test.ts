@@ -80,14 +80,14 @@ describe('view change drafts', () => {
           workflow: 'checkout',
           templateId: 'checkout-template', }),
         impact: {
-          baselineNodeCount: 1,
-          proposedNodeCount: 2,
+          baselineComponentCount: 1,
+          proposedComponentCount: 2,
           baselineBindingCount: 0,
           proposedBindingCount: 0, },
         plan: expect.objectContaining({
           mode: 'rebuild',
           confidence: 0.82,
-          rationale: 'Shorten forms, prefill where possible, and add inline validation.',
+          rationale_short: 'Repeated correction loops are showing up in checkout.',
           ui_spec: expect.objectContaining({
             nodes: [
               expect.objectContaining({ id: 'heading-2' }),
