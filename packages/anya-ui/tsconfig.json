@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "baseUrl": ".",
+    "paths": {
+      "@anya-ui/core": ["src/core"],
+      "@anya-ui/core/*": ["src/core/*"],
+      "@anya-ui/react": ["src/react"],
+      "@anya-ui/react/*": ["src/react/*"],
+      "@anya-ui/adapters": ["src/adapters"],
+      "@anya-ui/adapters/*": ["src/adapters/*"]
+    },
+    "resolveJsonModule": true,
+    "sourceMap": false,
+    "declarationMap": false
+  },
+  "include": ["src"],
+  "exclude": ["src/**/test", "src/**/*.test.ts", "src/**/*.test.tsx"]
+}

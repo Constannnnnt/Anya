@@ -1,0 +1,123 @@
+import { describe, it, expect } from 'vitest';
+import { createInitialRuntimeState, createRuntimeEvent } from '../runtime/events';
+import { runtimeReducer } from '../runtime/reducer';
+
+describe('runtimeReducer', () => {
+  it('updates session intent', () => {
+    const base = createInitialRuntimeState();
+    const event = createRuntimeEvent('session.intent_updated', { userIntent: 'Build dashboard' });
+    const next = runtimeReducer(base, event);
+
+    expect(next.session.userIntent).toBe('Build dashboard');
+    expect(next.lastEventId).toBe(event.id); });
+
+  it('records interactions', () => {
+    const base = {
+      ...createInitialRuntimeState(),
+      ui: {
+        ...createInitialRuntimeState().ui,
+        spec: {
+          layout: 'stack' as const,
+          nodes: [
+            { id: 'slider', type: 'ColorSlider', props: { value: 10 } },
+          ], }, }, };
+    const event = createRuntimeEvent('interaction.recorded', {
+      record: {
+        timestamp: 1,
+        nodeId: 'slider',
+        nodeType: 'ColorSlider',
+        action: 'change',
+        propName: 'value',
+        newValue: 42, }, });
+
+    const next = runtimeReducer(base, event);
+    expect(next.memory.interactions).toHaveLength(1);
+    expect(next.memory.interactions[0].nodeId).toBe('slider');
+    expect(next.ui.spec?.nodes[0].props.value).toBe(42);
+
+    event.payload.record.newValue = 999;
+    expect(next.memory.interactions[0].newValue).toBe(42); });
+
+  it('sets spec and session metadata on decoded specs', () => {
+    const base = createInitialRuntimeState();
+    const event = createRuntimeEvent('spec.decoded', {
+      spec: {
+        skill: 'analytics',
+        layout: 'grid',
+        nodes: [], }, });
+
+    const next = runtimeReducer(base, event);
+    expect(next.ui.spec?.layout).toBe('grid');
+    expect(next.session.status).toBe('rendering');
+    expect(next.session.workflowContext).toBe('analytics'); });
+
+  it('treats ui.presented and interaction.measured as observational passthrough events', () => {
+    const base = createInitialRuntimeState();
+    const presented = createRuntimeEvent('ui.presented', {
+      view: {
+        id: 'ui-123',
+        kind: 'generated',
+        layout: 'stack',
+        fingerprint: '1234abcd',
+        nodeCount: 1,
+        interactiveCount: 0,
+        actionableCount: 0,
+        nodeFamilies: ['text'],
+        actionFamilies: [], }, });
+    const afterPresented = runtimeReducer(base, presented);
+    expect(afterPresented.lastEventId).toBe(presented.id);
+    expect(afterPresented.ui.spec).toBeNull();
+
+    const measured = createRuntimeEvent('interaction.measured', {
+      interactionEventId: 'evt-interaction',
+      nodeId: 'btn-1',
+      nodeType: 'Button',
+      action: 'submit',
+      measurement: {
+        modality: 'pointer',
+        nodeFamily: 'action',
+        actionFamily: 'activate',
+        targetWidthPx: 120,
+        targetHeightPx: 40, }, });
+    const afterMeasured = runtimeReducer(afterPresented, measured);
+    expect(afterMeasured.lastEventId).toBe(measured.id);
+    expect(afterMeasured.memory.interactions).toHaveLength(0); });
+
+  it('keeps only the newest 100 interactions in order', () => {
+    let state = createInitialRuntimeState();
+
+    for (let i = 0; i < 130; i += 1) {
+      state = runtimeReducer(state, createRuntimeEvent('interaction.recorded', {
+        record: {
+          timestamp: i,
+          nodeId: `input-${i }`,
+          nodeType: 'TextInput',
+          action: 'change',
+          propName: 'value',
+          newValue: i, }, })); }
+
+    expect(state.memory.interactions).toHaveLength(100);
+    expect(state.memory.interactions[0].timestamp).toBe(30);
+    expect(state.memory.interactions[99].timestamp).toBe(129); });
+
+  it('caps and clones hydrated interaction history', () => {
+    const base = createInitialRuntimeState();
+    const hydrated = Array.from({ length: 130 }, (_, i) => ({
+      timestamp: i,
+      nodeId: `h-${i }`,
+      nodeType: 'TextInput',
+      action: 'change',
+      propName: 'value',
+      newValue: i, }));
+
+    const next = runtimeReducer(base, createRuntimeEvent('memory.hydrated', {
+      state: {
+        memory: {
+          interactions: hydrated, }, }, }));
+
+    expect(next.memory.interactions).toHaveLength(100);
+    expect(next.memory.interactions[0].timestamp).toBe(30);
+    expect(next.memory.interactions[99].timestamp).toBe(129);
+
+    hydrated[129]!.newValue = 9999;
+    expect(next.memory.interactions[99].newValue).toBe(129); }); });
