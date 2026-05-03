@@ -1,9 +1,9 @@
 {
   "name": "anya-ui",
-  "version": "0.1.0",
-  "description": "Unified framework for agentic, generative user interfaces with React",
+  "version": "0.1.1",
+  "description": "Agentic, generative user interface that adapts to user interactions and preferences",
   "keywords": [
-    "anya-ui",
+    "generative-ui",
     "agentic-ui",
     "react",
     "typescript",

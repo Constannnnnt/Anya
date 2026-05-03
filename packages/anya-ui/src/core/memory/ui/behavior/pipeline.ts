@@ -10,7 +10,7 @@ import { BehaviorAnalyzerRegistry } from './analyzerRegistry';
 import { BehaviorDirtyTracker } from './dirtyTracker';
 import { BehaviorAnalysisScheduler, type BehaviorSchedulerPolicy, type BehaviorSchedulerState } from './scheduler';
 import type { BehaviorAnalyzer } from './analyzers';
-import type { BehaviorSignal } from './schemas';
+import type { BehaviorComposite, BehaviorSignal } from './schemas';
 import type { BehaviorStore, BehaviorStoreSnapshot } from './store';
 import { InMemoryBehaviorStore } from './inMemoryStore';
 import {
@@ -18,6 +18,9 @@ import {
   type FindingInterpreterPolicy,
 } from './policy';
 import { integrateBehaviorFindings, type IntegrateBehaviorFindingsResult } from './interpreter';
+import { buildBehaviorComposites } from './composites';
+import { reduceRecommendationOutcomes } from './outcomes';
+import type { AppliedRecommendation } from './schemas';
 import type { AdaptiveProfile } from '../../profile';
 import {
   createBuiltinBehaviorAnalyzers,
@@ -49,6 +52,9 @@ export interface BehaviorAnalysisRunCapture {
   runAt: number;
   scheduler: ReturnType<BehaviorAnalysisScheduler['run']> extends Promise<infer TResult> ? TResult : never;
   integration: IntegrateBehaviorFindingsResult;
+  composites: BehaviorComposite[];
+  outcomeFindings: number;
+  resolvedRecommendations: AppliedRecommendation[];
   uiMemorySnapshot?: MemoryStoreSnapshot;
   behaviorSnapshot?: BehaviorStoreSnapshot;
 }
@@ -200,8 +206,34 @@ export class UiBehaviorPipeline {
       behaviorStore: this.behaviorStore,
     });
 
+    const retainedFindings = await this.behaviorStore.findFindings(this.config.actorId);
+    const compositeNow = Date.now();
+    const composites = buildBehaviorComposites({
+      actorId: this.config.actorId,
+      findings: retainedFindings,
+      now: compositeNow,
+    });
+    if (composites.length > 0) {
+      await this.behaviorStore.upsertComposites(composites);
+    }
+
+    const outcomeReduction = await reduceRecommendationOutcomes({
+      actorId: this.config.actorId,
+      store: this.behaviorStore,
+      now: compositeNow,
+    });
+    if (outcomeReduction.findings.length > 0) {
+      await integrateBehaviorFindings({
+        actorId: this.config.actorId,
+        findings: outcomeReduction.findings,
+        policy: this.interpreterPolicy,
+        memoryStore: this.config.eventStore,
+        behaviorStore: this.behaviorStore,
+      });
+    }
+
     await this.updateCursor(latest.id, latest.ts);
-    await this.emitCapture(schedulerResult, integration);
+    await this.emitCapture(schedulerResult, integration, composites, outcomeReduction.findings.length, outcomeReduction.resolvedRecords);
 
     if (this.config.materializeProfile && this.config.profile) {
       const { materializeToProfile } = await import('../materializer');
@@ -261,6 +293,9 @@ export class UiBehaviorPipeline {
   private async emitCapture(
     schedulerResult: Awaited<ReturnType<BehaviorAnalysisScheduler['run']>>,
     integration: IntegrateBehaviorFindingsResult,
+    composites: BehaviorComposite[],
+    outcomeFindings: number,
+    resolvedRecommendations: AppliedRecommendation[],
   ): Promise<void> {
     if (!this.onCapture) {
       return;
@@ -271,6 +306,9 @@ export class UiBehaviorPipeline {
       runAt: Date.now(),
       scheduler: schedulerResult,
       integration,
+      composites,
+      outcomeFindings,
+      resolvedRecommendations,
     };
 
     if (this.config.captureSnapshots) {

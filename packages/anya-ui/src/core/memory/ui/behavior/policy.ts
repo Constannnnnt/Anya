@@ -34,6 +34,7 @@ const DEFAULT_ALLOWED_KINDS_BY_ANALYZER: FindingInterpreterPolicy['allowedKindsB
   focus_switch_cost: ['reflection_candidate', 'diagnostic'],
   information_scent: ['reflection_candidate', 'diagnostic', 'warning'],
   practice_curve: ['pattern_candidate', 'reflection_candidate', 'diagnostic'],
+  recommendation_outcome: ['reflection_candidate', 'diagnostic'],
 };
 
 export const DEFAULT_FINDING_INTERPRETER_POLICY: FindingInterpreterPolicy = Object.freeze({

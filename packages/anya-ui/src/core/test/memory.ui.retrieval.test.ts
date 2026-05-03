@@ -212,7 +212,8 @@ describe('RetrievalComposer', () => {
           { ...makePattern(), rank: 0.85 },
         ],
         reflections: [makeReflection()],
-        behaviorAdaptations: [], });
+        behaviorAdaptations: [],
+        composites: [], });
 
       expect(formatted).toContain('## UI Memory Priors');
       expect(formatted).toContain('### Preferences');
@@ -226,7 +227,8 @@ describe('RetrievalComposer', () => {
         preferences: [],
         patterns: [],
         reflections: [],
-        behaviorAdaptations: [], });
+        behaviorAdaptations: [],
+        composites: [], });
 
       expect(formatted).toBe(''); });
 
@@ -259,7 +261,8 @@ describe('RetrievalComposer', () => {
               { label: 'avgRetryRate', value: '28%' },
             ],
             rank: 1.2, },
-        ], });
+        ],
+        composites: [], });
 
       expect(formatted).toContain('behavior-derived');
       expect(formatted).toContain('### Measured Interaction Signals');
@@ -286,7 +289,8 @@ describe('RetrievalComposer', () => {
               { label: 'burdenImprovement', value: '2.4' },
             ],
             rank: 1.05, },
-        ], });
+        ],
+        composites: [], });
 
       expect(formatted).toContain('### Measured Interaction Signals');
       expect(formatted).toContain('A repeated successful sequence is emerging in Edit Compose');

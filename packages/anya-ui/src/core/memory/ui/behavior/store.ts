@@ -1,5 +1,8 @@
 import type {
+  AppliedRecommendation,
   BehaviorAggregate,
+  BehaviorComposite,
+  BehaviorCompositeKind,
   BehaviorFinding,
   BehaviorSegment,
   BehaviorSessionSummary,
@@ -37,12 +40,26 @@ export interface BehaviorFindingQueryOptions {
   limit?: number;
 }
 
+export interface BehaviorCompositeQueryOptions {
+  kind?: BehaviorCompositeKind;
+  contextArchetype?: string;
+  limit?: number;
+}
+
+export interface AppliedRecommendationQueryOptions {
+  contextArchetype?: string;
+  resolved?: boolean;
+  limit?: number;
+}
+
 export interface BehaviorStoreSnapshot {
   signals: BehaviorSignal[];
   segments: BehaviorSegment[];
   sessionSummaries: BehaviorSessionSummary[];
   aggregates: BehaviorAggregate[];
   findings: BehaviorFinding[];
+  composites: BehaviorComposite[];
+  appliedRecommendations: AppliedRecommendation[];
 }
 
 export interface BehaviorStore {
@@ -59,5 +76,12 @@ export interface BehaviorStore {
   findAggregates(actorId: string, options?: BehaviorAggregateQueryOptions): Promise<BehaviorAggregate[]>;
   upsertFindings(findings: BehaviorFinding[]): Promise<void>;
   findFindings(actorId: string, options?: BehaviorFindingQueryOptions): Promise<BehaviorFinding[]>;
+  upsertComposites(composites: BehaviorComposite[]): Promise<void>;
+  findComposites(actorId: string, options?: BehaviorCompositeQueryOptions): Promise<BehaviorComposite[]>;
+  upsertAppliedRecommendations(records: AppliedRecommendation[]): Promise<void>;
+  findAppliedRecommendations(
+    actorId: string,
+    options?: AppliedRecommendationQueryOptions,
+  ): Promise<AppliedRecommendation[]>;
   exportJson(): Promise<BehaviorStoreSnapshot>;
 }

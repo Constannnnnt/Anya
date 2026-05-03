@@ -1,12 +1,16 @@
 import type {
+  AppliedRecommendation,
   BehaviorAggregate,
+  BehaviorComposite,
   BehaviorFinding,
   BehaviorSegment,
   BehaviorSessionSummary,
   BehaviorSignal,
 } from './schemas';
 import type {
+  AppliedRecommendationQueryOptions,
   BehaviorAggregateQueryOptions,
+  BehaviorCompositeQueryOptions,
   BehaviorFindingQueryOptions,
   BehaviorSegmentQueryOptions,
   BehaviorSessionSummaryQueryOptions,
@@ -26,6 +30,10 @@ export class InMemoryBehaviorStore implements BehaviorStore {
   private readonly aggregateIdsByActor = new Map<string, Set<string>>();
   private readonly findings = new Map<string, BehaviorFinding>();
   private readonly findingIdsByActor = new Map<string, Set<string>>();
+  private readonly composites = new Map<string, BehaviorComposite>();
+  private readonly compositeIdsByActor = new Map<string, Set<string>>();
+  private readonly appliedRecommendations = new Map<string, AppliedRecommendation>();
+  private readonly appliedRecommendationIdsByActor = new Map<string, Set<string>>();
 
   async upsertSignals(signals: BehaviorSignal[]): Promise<void> {
     for (const signal of signals) {
@@ -137,6 +145,57 @@ export class InMemoryBehaviorStore implements BehaviorStore {
     );
   }
 
+  async upsertComposites(composites: BehaviorComposite[]): Promise<void> {
+    for (const composite of composites) {
+      upsertRecord(this.composites, this.compositeIdsByActor, cloneComposite(composite));
+    }
+  }
+
+  async findComposites(
+    actorId: string,
+    options?: BehaviorCompositeQueryOptions,
+  ): Promise<BehaviorComposite[]> {
+    return collectIndexedRecords(
+      this.composites,
+      this.compositeIdsByActor,
+      actorId,
+      options,
+      (composite) =>
+        (!options?.kind || composite.kind === options.kind)
+        && (!options?.contextArchetype || composite.contextArchetype === options.contextArchetype),
+      (record) => record.updatedTs,
+      cloneComposite,
+    );
+  }
+
+  async upsertAppliedRecommendations(records: AppliedRecommendation[]): Promise<void> {
+    for (const record of records) {
+      upsertRecord(
+        this.appliedRecommendations,
+        this.appliedRecommendationIdsByActor,
+        cloneAppliedRecommendation(record),
+      );
+    }
+  }
+
+  async findAppliedRecommendations(
+    actorId: string,
+    options?: AppliedRecommendationQueryOptions,
+  ): Promise<AppliedRecommendation[]> {
+    return collectIndexedRecords(
+      this.appliedRecommendations,
+      this.appliedRecommendationIdsByActor,
+      actorId,
+      options,
+      (record) =>
+        (!options?.contextArchetype || record.contextArchetype === options.contextArchetype)
+        && (options?.resolved === undefined
+          || (options.resolved ? record.resolvedTs !== undefined : record.resolvedTs === undefined)),
+      (record) => record.appliedTs,
+      cloneAppliedRecommendation,
+    );
+  }
+
   async exportJson(): Promise<BehaviorStoreSnapshot> {
     return {
       signals: [...this.signals.values()].map(cloneSignal),
@@ -144,6 +203,8 @@ export class InMemoryBehaviorStore implements BehaviorStore {
       sessionSummaries: [...this.sessionSummaries.values()].map(cloneSummary),
       aggregates: [...this.aggregates.values()].map(cloneAggregate),
       findings: [...this.findings.values()].map(cloneFinding),
+      composites: [...this.composites.values()].map(cloneComposite),
+      appliedRecommendations: [...this.appliedRecommendations.values()].map(cloneAppliedRecommendation),
     };
   }
 }
@@ -237,4 +298,16 @@ function cloneFinding(finding: BehaviorFinding): BehaviorFinding {
     evidenceRefs: [...finding.evidenceRefs],
     payload: { ...finding.payload },
   };
+}
+
+function cloneComposite(composite: BehaviorComposite): BehaviorComposite {
+  return {
+    ...composite,
+    contributingAnalyzers: [...composite.contributingAnalyzers],
+    findingIds: [...composite.findingIds],
+  };
+}
+
+function cloneAppliedRecommendation(record: AppliedRecommendation): AppliedRecommendation {
+  return { ...record };
 }

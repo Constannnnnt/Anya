@@ -6,7 +6,13 @@
  */
 
 import { shouldRetainForLocalAdaptation, type FindingInterpreterPolicy } from './behavior/policy';
-import type { BehaviorFinding, BehaviorFindingSeverity } from './behavior/schemas';
+import type {
+  BehaviorComposite,
+  BehaviorCompositeKind,
+  BehaviorFinding,
+  BehaviorFindingSeverity,
+} from './behavior/schemas';
+import { severityToScore } from './behavior/severity';
 import type { BehaviorStore } from './behavior/store';
 import type { MemoryStore } from './store';
 import type {
@@ -45,6 +51,7 @@ export interface PlanningMemoryContext {
   patterns: RankedPattern[];
   reflections: Reflection[];
   behaviorAdaptations: RankedBehaviorAdaptation[];
+  composites: BehaviorComposite[];
 }
 
 export interface RankedPreference extends PreferenceMemory {
@@ -68,6 +75,8 @@ export interface RetrievalConfig {
   maxReflections?: number;
   /** Max local adaptations derived from measured interactions. Default: 4 */
   maxBehaviorAdaptations?: number;
+  /** Max composite scores to return. Default: 4 */
+  maxBehaviorComposites?: number;
   /** Ranking weight for confidence. Default: 0.45 */
   confidenceWeight?: number;
   /** Ranking weight for recency. Default: 0.30 */
@@ -96,6 +105,7 @@ export class RetrievalComposer {
       maxPatterns: config?.maxPatterns ?? 5,
       maxReflections: config?.maxReflections ?? 3,
       maxBehaviorAdaptations: config?.maxBehaviorAdaptations ?? 4,
+      maxBehaviorComposites: config?.maxBehaviorComposites ?? 4,
       confidenceWeight: config?.confidenceWeight ?? 0.45,
       recencyWeight: config?.recencyWeight ?? 0.30,
       supportWeight: config?.supportWeight ?? 0.25,
@@ -113,16 +123,17 @@ export class RetrievalComposer {
     taskContext?: { taskClass?: string; category?: string },
     behavior?: BehaviorRetrievalInput,
   ): Promise<PlanningMemoryContext> {
-    const [preferences, patterns, reflections, behaviorAdaptations] = await Promise.all([
+    const [preferences, patterns, reflections, behaviorAdaptations, composites] = await Promise.all([
       this.retrievePreferences(store, actorId, taskContext?.category),
       this.retrievePatterns(store, actorId, taskContext?.taskClass),
       store.findReflections(actorId, {
         limit: this.config.maxReflections,
       }),
       this.retrieveBehaviorAdaptations(actorId, taskContext?.taskClass, behavior),
+      this.retrieveBehaviorComposites(actorId, taskContext?.taskClass, behavior),
     ]);
 
-    return { preferences, patterns, reflections, behaviorAdaptations };
+    return { preferences, patterns, reflections, behaviorAdaptations, composites };
   }
 
   /**
@@ -133,12 +144,23 @@ export class RetrievalComposer {
       ctx.preferences.length === 0 &&
       ctx.patterns.length === 0 &&
       ctx.reflections.length === 0 &&
-      ctx.behaviorAdaptations.length === 0
+      ctx.behaviorAdaptations.length === 0 &&
+      ctx.composites.length === 0
     ) {
       return '';
     }
 
     const sections: string[] = ['## UI Memory Priors'];
+
+    if (ctx.composites.length > 0) {
+      sections.push('### Interaction Friction Summary');
+      sections.push(
+        'Per-context composite scores (0–1) fused from related heuristics. Use these as the dominant signal for where the interface is hurting.',
+      );
+      for (const composite of ctx.composites) {
+        sections.push(formatComposite(composite));
+      }
+    }
 
     if (ctx.preferences.length > 0) {
       sections.push('### Preferences');
@@ -213,6 +235,23 @@ export class RetrievalComposer {
     });
 
     return this.rankPatterns(patterns).slice(0, this.config.maxPatterns);
+  }
+
+  private async retrieveBehaviorComposites(
+    actorId: string,
+    taskClass: string | undefined,
+    behavior?: BehaviorRetrievalInput,
+  ): Promise<BehaviorComposite[]> {
+    if (!behavior) {
+      return [];
+    }
+
+    const composites = await behavior.store.findComposites(actorId);
+    if (composites.length === 0) {
+      return [];
+    }
+
+    return rankComposites(composites, taskClass).slice(0, this.config.maxBehaviorComposites);
   }
 
   private async retrieveBehaviorAdaptations(
@@ -352,6 +391,51 @@ function formatDerivation(derivation: MemoryDerivation | undefined): string | un
 function formatInlineDetailList(parts: Array<string | undefined>): string {
   const filtered = parts.filter((part): part is string => Boolean(part));
   return filtered.length > 0 ? `(${filtered.join(', ')})` : '';
+}
+
+function formatComposite(composite: BehaviorComposite): string {
+  const score = composite.score.toFixed(2);
+  const confidence = composite.confidence.toFixed(2);
+  const contributors = composite.contributingAnalyzers.join(', ');
+  const context = humanizeConceptKey(composite.contextArchetype);
+  const label = formatCompositeLabel(composite.kind);
+  return `- [${composite.severity}] ${label} in ${context}: score ${score} (confidence ${confidence}, support ${composite.support}, from ${contributors}).`;
+}
+
+function formatCompositeLabel(kind: BehaviorCompositeKind): string {
+  switch (kind) {
+    case 'motor_friction':
+      return 'Motor friction';
+    case 'cognitive_load':
+      return 'Cognitive load';
+    case 'wayfinding_health':
+      return 'Wayfinding cost';
+    case 'input_friction':
+      return 'Input friction';
+  }
+}
+
+function rankComposites(
+  composites: BehaviorComposite[],
+  taskClass: string | undefined,
+): BehaviorComposite[] {
+  const normalizedTaskClass = normalizeKey(taskClass);
+  return [...composites].sort((left, right) => {
+    const leftMatch = compositeMatchesTask(left, normalizedTaskClass);
+    const rightMatch = compositeMatchesTask(right, normalizedTaskClass);
+    if (leftMatch !== rightMatch) {
+      return leftMatch ? -1 : 1;
+    }
+    if (right.score !== left.score) {
+      return right.score - left.score;
+    }
+    return right.updatedTs - left.updatedTs;
+  });
+}
+
+function compositeMatchesTask(composite: BehaviorComposite, normalizedTaskClass: string): boolean {
+  if (!normalizedTaskClass) return false;
+  return normalizeKey(composite.contextArchetype) === normalizedTaskClass;
 }
 
 function formatBehaviorEvidence(adaptation: BehaviorAdaptation): string {
@@ -578,18 +662,6 @@ function normalizeKey(value: string | undefined): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '');
-}
-
-export function severityToScore(severity: BehaviorFindingSeverity | undefined): number {
-  switch (severity) {
-    case 'high':
-      return 1;
-    case 'medium':
-      return 0.6;
-    case 'low':
-    default:
-      return 0.25;
-  }
 }
 
 function asNonEmptyString(value: unknown): string | undefined {

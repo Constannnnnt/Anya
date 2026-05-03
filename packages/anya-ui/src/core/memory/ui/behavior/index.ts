@@ -1,5 +1,8 @@
 export {
+  AppliedRecommendationSchema,
   BehaviorAggregateSchema,
+  BehaviorCompositeKindSchema,
+  BehaviorCompositeSchema,
   BehaviorFindingKindSchema,
   BehaviorFindingSchema,
   BehaviorFindingSeveritySchema,
@@ -8,9 +11,13 @@ export {
   BehaviorSessionSummarySchema,
   BehaviorSignalSchema,
   InteractionModalitySchema,
+  RecommendationOutcomeSchema,
 } from './schemas';
 export type {
+  AppliedRecommendation,
   BehaviorAggregate,
+  BehaviorComposite,
+  BehaviorCompositeKind,
   BehaviorFinding,
   BehaviorFindingKind,
   BehaviorFindingSeverity,
@@ -19,11 +26,23 @@ export type {
   BehaviorSessionSummary,
   BehaviorSignal,
   InteractionModality,
+  RecommendationOutcome,
 } from './schemas';
+
+export { severityFromScore, severityToScore } from './severity';
+
+export {
+  buildBehaviorComposites,
+  getCompositeKindForAnalyzer,
+  resolveFindingContextArchetype,
+  type BuildBehaviorCompositesInput,
+} from './composites';
 
 export { InMemoryBehaviorStore } from './inMemoryStore';
 export type {
+  AppliedRecommendationQueryOptions,
   BehaviorAggregateQueryOptions,
+  BehaviorCompositeQueryOptions,
   BehaviorFindingQueryOptions,
   BehaviorSegmentQueryOptions,
   BehaviorSessionSummaryQueryOptions,
@@ -31,6 +50,17 @@ export type {
   BehaviorStore,
   BehaviorStoreSnapshot,
 } from './store';
+
+export {
+  OUTCOME_DELTA,
+  POST_APPLICATION_SESSIONS,
+  RECOMMENDATION_OUTCOME_ANALYZER_ID,
+  recordAppliedRecommendation,
+  reduceRecommendationOutcomes,
+  type RecommendationOutcomeReduction,
+  type RecordAppliedRecommendationInput,
+  type ViewRecommendationLike,
+} from './outcomes';
 
 export { projectBehaviorSignals } from './signalProjector';
 export { reduceBehaviorSegments } from './segmentReducer';
@@ -92,6 +122,8 @@ export {
   CalibrationProfileSchema,
   evaluateCalibrationProfile,
   rankCalibrationProfiles,
+  type CalibrationCompositeExpectation,
+  type CalibrationCompositeMismatch,
   type CalibrationFixture,
   type CalibrationFixtureExpectation,
   type CalibrationFixtureResult,

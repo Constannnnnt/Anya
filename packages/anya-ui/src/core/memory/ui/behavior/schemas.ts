@@ -115,3 +115,54 @@ export const BehaviorFindingSchema = z.object({
   createdTs: z.number(),
 });
 export type BehaviorFinding = z.infer<typeof BehaviorFindingSchema>;
+
+export const BehaviorCompositeKindSchema = z.enum([
+  'motor_friction',
+  'cognitive_load',
+  'wayfinding_health',
+  'input_friction',
+]);
+export type BehaviorCompositeKind = z.infer<typeof BehaviorCompositeKindSchema>;
+
+export const BehaviorCompositeSchema = z.object({
+  id: z.string(),
+  actorId: z.string(),
+  kind: BehaviorCompositeKindSchema,
+  contextArchetype: z.string(),
+  score: z.number().min(0).max(1),
+  severity: BehaviorFindingSeveritySchema,
+  confidence: z.number().min(0).max(1),
+  support: z.number().int().min(0),
+  contributingAnalyzers: z.array(z.string()),
+  findingIds: z.array(z.string()),
+  windowStartTs: z.number(),
+  windowEndTs: z.number(),
+  updatedTs: z.number(),
+});
+export type BehaviorComposite = z.infer<typeof BehaviorCompositeSchema>;
+
+export const RecommendationOutcomeSchema = z.enum([
+  'improved',
+  'regressed',
+  'neutral',
+  'inconclusive',
+]);
+export type RecommendationOutcome = z.infer<typeof RecommendationOutcomeSchema>;
+
+export const AppliedRecommendationSchema = z.object({
+  id: z.string(),
+  actorId: z.string(),
+  recommendationId: z.string(),
+  analyzerId: z.string(),
+  compositeKind: BehaviorCompositeKindSchema.optional(),
+  contextArchetype: z.string(),
+  baselineScore: z.number().min(0).max(1).optional(),
+  baselineSeverity: BehaviorFindingSeveritySchema.optional(),
+  appliedTs: z.number(),
+  appliedSessionId: z.string().optional(),
+  resolvedTs: z.number().optional(),
+  outcome: RecommendationOutcomeSchema.optional(),
+  outcomeScore: z.number().min(0).max(1).optional(),
+  outcomeDelta: z.number().optional(),
+});
+export type AppliedRecommendation = z.infer<typeof AppliedRecommendationSchema>;
