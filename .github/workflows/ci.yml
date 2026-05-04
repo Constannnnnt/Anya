@@ -69,8 +69,8 @@ jobs:
         working-directory: packages/anya-ui
         run: npx -y @arethetypeswrong/cli@0.18.2 --pack . --profile node16
 
-      - name: npm audit (prod deps only)
-        run: npm audit --omit=dev
+      - name: pnpm audit (prod deps only)
+        run: pnpm audit --prod
 
       - name: npm pack dry-run
         run: npm pack --dry-run --json --workspace anya-ui
