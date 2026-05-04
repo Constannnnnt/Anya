@@ -157,5 +157,8 @@ copyAssets(srcDir, distCjsDir, '.css');
 fixDtsImports(distDir);
 fixJsImports(distDir);
 writeCtsDeclaration('index');
+writeCtsDeclaration('core/index');
+writeCtsDeclaration('react/index');
+writeCtsDeclaration('adapters/index');
 writeCtsDeclaration('experimental');
 writeExperimentalCompatShim();
