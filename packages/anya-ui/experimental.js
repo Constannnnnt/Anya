@@ -1,1 +1,1 @@
-module.exports = require('./dist-cjs/experimental.js');
+module.exports = require('./dist-cjs/core/experimental.js');
