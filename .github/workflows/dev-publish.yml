@@ -165,7 +165,8 @@ jobs:
           pnpm --filter anya-ui exec npm version "$DEV_VERSION" --no-git-tag-version
 
       - name: Publish to npm with dev tag
-        run: pnpm --filter anya-ui publish --access public --provenance --no-git-checks --tag dev
+        working-directory: packages/anya-ui
+        run: pnpm publish --access public --provenance --no-git-checks --tag dev
 
       - name: Advance last-dev-publish tag
         env:

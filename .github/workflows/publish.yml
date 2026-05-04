@@ -97,7 +97,8 @@ jobs:
         run: pnpm build
 
       - name: Publish anya-ui to npm
-        run: pnpm --filter anya-ui publish --access public --provenance --no-git-checks --tag "${{ github.event.inputs.dist_tag }}"
+        working-directory: packages/anya-ui
+        run: pnpm publish --access public --provenance --no-git-checks --tag "${{ github.event.inputs.dist_tag }}"
 
       - name: Summarize
         run: |
