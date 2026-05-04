@@ -134,8 +134,9 @@ interface UiMemoryMountSnapshot {
   triggerConfig: string;
   retrievalConfig: string;
   windowConfig: string;
-  sqlite: string;
-  indexeddb: string;
+  filename: string;
+  dbName: string;
+  dbVersion: string;
   behavior: string;
   store: NonNullable<AnyaRuntimeConfig['uiMemory']>['store'];
   runPrompt: NonNullable<AnyaRuntimeConfig['uiMemory']>['runPrompt'];
@@ -245,8 +246,9 @@ function snapshotUiMemoryConfig(uiMemory?: AnyaRuntimeConfig['uiMemory']): UiMem
     triggerConfig: stableSerialize(uiMemory.triggerConfig),
     retrievalConfig: stableSerialize(uiMemory.retrievalConfig),
     windowConfig: stableSerialize(uiMemory.windowConfig),
-    sqlite: stableSerialize(uiMemory.sqlite),
-    indexeddb: stableSerialize(uiMemory.indexeddb),
+    filename: stableSerialize(uiMemory.filename),
+    dbName: stableSerialize(uiMemory.dbName),
+    dbVersion: stableSerialize(uiMemory.dbVersion),
     behavior: snapshotUiBehaviorConfig(uiMemory.behavior),
     store: uiMemory.store,
     runPrompt: uiMemory.runPrompt,
@@ -322,8 +324,9 @@ function areUiMemorySnapshotsEqual(
     && left.triggerConfig === right.triggerConfig
     && left.retrievalConfig === right.retrievalConfig
     && left.windowConfig === right.windowConfig
-    && left.sqlite === right.sqlite
-    && left.indexeddb === right.indexeddb
+    && left.filename === right.filename
+    && left.dbName === right.dbName
+    && left.dbVersion === right.dbVersion
     && left.behavior === right.behavior
     && left.store === right.store
     && left.runPrompt === right.runPrompt
