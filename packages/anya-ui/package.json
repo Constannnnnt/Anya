@@ -95,6 +95,7 @@
   },
   "scripts": {
     "build": "node scripts/clean-build.mjs && tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node scripts/minify.mjs && node scripts/postbuild.mjs",
+    "clean": "node scripts/clean-build.mjs",
     "prepublishOnly": "npm run build && npm test",
     "dev": "tsc -p tsconfig.json --watch",
     "lint": "tsc -p tsconfig.json --noEmit",
@@ -120,6 +121,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "esbuild": "^0.28.0",
+    "jsdom": "^26.0.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "typescript": "^5.7.0",

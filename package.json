@@ -12,20 +12,19 @@
     "url": "https://github.com/Constannnnnt/Anya/issues"
   },
   "homepage": "https://github.com/Constannnnnt/Anya#readme",
-  "packageManager": "npm@10.9.2",
+  "packageManager": "pnpm@9.15.4",
   "engines": {
     "node": ">=20"
   },
-  "workspaces": [
-    "packages/*"
-  ],
   "scripts": {
-    "build": "npm run --workspaces build",
-    "lint": "npm run --workspaces lint && npm run lint:md",
+    "build": "pnpm -r build",
+    "clean": "pnpm -r clean",
+    "purge": "pnpm -r exec node -e \"const fs=require('fs');['node_modules','dist','dist-cjs'].forEach(d=>fs.rmSync(d,{recursive:true,force:true}))\" && node -e \"const fs=require('fs');['node_modules','pnpm-lock.yaml'].forEach(d=>fs.rmSync(d,{recursive:true,force:true}))\"",
+    "lint": "pnpm -r lint && pnpm lint:md",
     "lint:md": "markdownlint-cli2",
     "lint:md:fix": "markdownlint-cli2 --fix",
-    "test": "npm run --workspaces test",
-    "typecheck": "npm run --workspaces lint",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r lint",
     "changeset": "changeset",
     "changeset:check": "node scripts/check-changeset.mjs",
     "changeset:release-check": "node scripts/check-release-state.mjs",

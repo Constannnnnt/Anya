@@ -26,8 +26,8 @@ describe('primitives drag behavior', () => {
       dataTransfer: { setData }, });
     expect(setData).not.toHaveBeenCalled();
 
-    fireEvent.pointerDown(card, { button: 0 });
-    vi.advanceTimersByTime(250);
+    fireEvent.mouseDown(card, { button: 0 });
+    vi.advanceTimersByTime(251);
 
     fireEvent.dragStart(card, {
       dataTransfer: { setData }, });
@@ -81,8 +81,8 @@ describe('primitives drag behavior', () => {
         dragData.set(type, value); },
       getData: (type: string) => dragData.get(type) ?? '', };
 
-    fireEvent.pointerDown(source, { button: 0 });
-    vi.advanceTimersByTime(250);
+    fireEvent.mouseDown(source, { button: 0 });
+    vi.advanceTimersByTime(251);
     fireEvent.dragStart(source, {
       clientX: 20,
       clientY: 20,

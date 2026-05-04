@@ -183,6 +183,18 @@ interface DragTelemetrySession {
 }
 
 const activeDragSessions = new Map<string, DragTelemetrySession>();
+const armedElements = new WeakMap<HTMLElement, boolean>();
+const holdTimers = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>>();
+
+function updateDragArmedClass(target: EventTarget | null, armed: boolean) {
+    const element = target as HTMLElement | null;
+    if (!element || !('classList' in element)) return;
+    if (armed) {
+        element.classList.add('anya-drag-armed');
+    } else {
+        element.classList.remove('anya-drag-armed');
+    }
+}
 
 export function useSyncedState<T>(
     externalValue: T | undefined,
@@ -276,40 +288,37 @@ export function bindDrag(
 ): React.HTMLAttributes<HTMLElement> & { draggable?: boolean } {
     if (!props.draggable) return {};
 
-    let holdTimer: ReturnType<typeof setTimeout> | null = null;
-    let dragArmed = false;
-
-    const updateDragArmedClass = (target: EventTarget | null, armed: boolean) => {
-        const element = target as HTMLElement | null;
-        if (!element || !('classList' in element)) return;
-        if (armed) {
-            element.classList.add('anya-drag-armed');
-        } else {
-            element.classList.remove('anya-drag-armed');
-        }
-    };
-
-    const clearHoldTimer = () => {
-        if (!holdTimer) return;
-        clearTimeout(holdTimer);
-        holdTimer = null;
-    };
-
     const beginArming = (target: EventTarget | null) => {
-        clearHoldTimer();
-        dragArmed = false;
-        updateDragArmedClass(target, false);
-        holdTimer = setTimeout(() => {
-            dragArmed = true;
-            updateDragArmedClass(target, true);
-            holdTimer = null;
+        const element = target as HTMLElement | null;
+        if (!element) return;
+        
+        const existingTimer = holdTimers.get(element);
+        if (existingTimer) clearTimeout(existingTimer);
+        
+        armedElements.set(element, false);
+        updateDragArmedClass(element, false);
+        
+        const timer = setTimeout(() => {
+            armedElements.set(element, true);
+            updateDragArmedClass(element, true);
+            holdTimers.delete(element);
         }, DRAG_HOLD_MS);
+        
+        holdTimers.set(element, timer);
     };
 
     const resetArming = (target: EventTarget | null) => {
-        clearHoldTimer();
-        dragArmed = false;
-        updateDragArmedClass(target, false);
+        const element = target as HTMLElement | null;
+        if (!element) return;
+        
+        const timer = holdTimers.get(element);
+        if (timer) {
+            clearTimeout(timer);
+            holdTimers.delete(element);
+        }
+        
+        armedElements.set(element, false);
+        updateDragArmedClass(element, false);
     };
 
     return {
@@ -318,8 +327,19 @@ export function bindDrag(
             if (e.button !== 0) return;
             beginArming(e.currentTarget);
         },
+        onMouseDown: (e: React.MouseEvent) => {
+            if (e.button !== 0) return;
+            beginArming(e.currentTarget);
+        },
         onPointerUp: (e: React.PointerEvent) => {
-            if (!dragArmed) {
+            const isArmed = armedElements.get(e.currentTarget as HTMLElement);
+            if (!isArmed) {
+                resetArming(e.currentTarget);
+            }
+        },
+        onMouseUp: (e: React.MouseEvent) => {
+            const isArmed = armedElements.get(e.currentTarget as HTMLElement);
+            if (!isArmed) {
                 resetArming(e.currentTarget);
             }
         },
@@ -327,15 +347,24 @@ export function bindDrag(
             resetArming(e.currentTarget);
         },
         onPointerLeave: (e: React.PointerEvent) => {
-            if (!dragArmed) {
+            const isArmed = armedElements.get(e.currentTarget as HTMLElement);
+            if (!isArmed) {
+                resetArming(e.currentTarget);
+            }
+        },
+        onMouseLeave: (e: React.MouseEvent) => {
+            const isArmed = armedElements.get(e.currentTarget as HTMLElement);
+            if (!isArmed) {
                 resetArming(e.currentTarget);
             }
         },
         onDragStart: (e: React.DragEvent) => {
             e.stopPropagation();
-            if (!dragArmed) {
+            const element = e.currentTarget as HTMLElement;
+            const isArmed = armedElements.get(element);
+            if (!isArmed) {
                 e.preventDefault();
-                resetArming(e.currentTarget);
+                resetArming(element);
                 return;
             }
             e.dataTransfer.effectAllowed = 'move';
