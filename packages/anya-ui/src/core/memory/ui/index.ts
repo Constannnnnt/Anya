@@ -64,10 +64,12 @@ export type {
 
 // ─── Adapters ────────────────────────────────────────────────────────────
 export { InMemoryMemoryStore } from './inMemoryAdapter';
-export { SQLiteMemoryStore } from './sqliteAdapter';
-export type { SQLiteMemoryStoreOptions } from './sqliteAdapter';
-export { IndexedDbMemoryStore } from './indexedDbAdapter';
-export type { IndexedDbMemoryStoreOptions } from './indexedDbAdapter';
+export { PersistentMemoryStore } from './persistentAdapter';
+export {
+  NodeStorageProvider,
+  BrowserStorageProvider,
+} from './storageProvider';
+export type { StorageProvider } from './storageProvider';
 export {
   createMemoryStoreByPolicySync,
   type MemoryStorePolicy,

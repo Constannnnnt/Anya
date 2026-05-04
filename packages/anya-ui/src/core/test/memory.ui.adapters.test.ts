@@ -2,15 +2,17 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
-import { SQLiteMemoryStore } from '../memory/ui/sqliteAdapter';
+import { PersistentMemoryStore } from '../memory/ui/persistentAdapter';
+import { NodeStorageProvider } from '../memory/ui/storageProvider';
 import { createMemoryStoreByPolicySync } from '../memory/ui/storeFactory';
 
-describe('SQLiteMemoryStore', () => {
+describe('PersistentMemoryStore (Node)', () => {
   it('persists and reloads snapshot data across instances', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'anya-sqlite-'));
+    const dir = mkdtempSync(join(tmpdir(), 'anya-storage-'));
     const filename = join(dir, 'memory.sqlite');
 
-    const storeA = await SQLiteMemoryStore.create({ filename });
+    const providerA = new NodeStorageProvider({ filename });
+    const storeA = await PersistentMemoryStore.create(providerA);
     await storeA.appendEvents([
       {
         id: 'evt-1',
@@ -42,7 +44,8 @@ describe('SQLiteMemoryStore', () => {
       updatedTs: 2, });
     storeA.close();
 
-    const storeB = await SQLiteMemoryStore.create({ filename });
+    const providerB = new NodeStorageProvider({ filename });
+    const storeB = await PersistentMemoryStore.create(providerB);
     const events = await storeB.readEvents();
     const prefs = await storeB.findPreferences('actor-1');
     const cursor = await storeB.getCursor('ui_memory');
