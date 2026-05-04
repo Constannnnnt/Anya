@@ -72,6 +72,6 @@ jobs:
       - name: pnpm audit (prod deps only)
         run: pnpm audit --prod
 
-      - name: pnpm pack dry-run
+      - name: npm pack dry-run
         working-directory: packages/anya-ui
-        run: pnpm pack --dry-run
+        run: npm pack --dry-run
