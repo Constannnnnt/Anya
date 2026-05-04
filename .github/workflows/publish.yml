@@ -98,8 +98,6 @@ jobs:
 
       - name: Publish anya-ui to npm
         run: pnpm --filter anya-ui publish --access public --provenance --no-git-checks --tag "${{ github.event.inputs.dist_tag }}"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Summarize
         run: |
