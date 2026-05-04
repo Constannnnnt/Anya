@@ -35,6 +35,8 @@
     "dist-cjs/**/*.js",
     "dist-cjs/**/*.d.cts",
     "dist-cjs/package.json",
+    "experimental.js",
+    "experimental.d.ts",
     "README.md",
     "LICENSE*"
   ],
@@ -90,6 +92,10 @@
         "default": "./dist-cjs/adapters/index.js"
       },
       "default": "./dist/adapters/index.js"
+    },
+    "./experimental": {
+      "import": "./dist/core/experimental.js",
+      "require": "./dist-cjs/core/experimental.js"
     },
     "./package.json": "./package.json"
   },

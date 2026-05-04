@@ -120,11 +120,11 @@ function writeExperimentalCompatShim() {
 
   fs.writeFileSync(
     jsTarget,
-    "module.exports = require('./dist-cjs/experimental.js');\n",
+    "module.exports = require('./dist-cjs/core/experimental.js');\n",
   );
   fs.writeFileSync(
     dtsTarget,
-    "export * from './dist/experimental.js';\n",
+    "export * from './dist/core/experimental.js';\n",
   );
 }
 
