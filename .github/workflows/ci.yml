@@ -53,13 +53,14 @@ jobs:
         run: pnpm -r build
 
       - name: Runtime smoke (ESM + CJS)
+        working-directory: packages/anya-ui
         run: |
-          node --input-type=module -e "await import('anya-ui');"
-          node --input-type=module -e "await import('anya-ui/core');"
-          node --input-type=module -e "await import('anya-ui/react');"
-          node --input-type=module -e "await import('anya-ui/adapters');"
-          node -e "require('anya-ui');"
-          node -e "require('anya-ui/core');"
+          node --input-type=module -e "await import('./dist/index.js');"
+          node --input-type=module -e "await import('./dist/core/index.js');"
+          node --input-type=module -e "await import('./dist/react/index.js');"
+          node --input-type=module -e "await import('./dist/adapters/index.js');"
+          node -e "require('./dist-cjs/index.js');"
+          node -e "require('./dist-cjs/core/index.js');"
 
       - name: publint
         run: npx -y publint@0.3.18 packages/anya-ui
