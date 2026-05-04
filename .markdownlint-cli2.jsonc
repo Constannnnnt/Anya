@@ -1,0 +1,51 @@
+{
+  // Config for markdownlint-cli2. See:
+  // https://github.com/DavidAnson/markdownlint-cli2#configuration
+  "config": {
+    "default": true,
+
+    // Line-length checks make prose painful and don't catch real bugs.
+    "MD013": false,
+
+    // Allow inline HTML — the docs use a few tables/<aside>/<details>.
+    "MD033": false,
+
+    // Allow duplicate headings under different parents (common in API ref).
+    "MD024": { "siblings_only": true },
+
+    // Don't force a top-level h1 — some files start with metadata.
+    "MD041": false,
+
+    // Don't require fenced-code-block language tags everywhere.
+    "MD040": false,
+
+    // Bare URLs are fine inline.
+    "MD034": false,
+
+    // Allow trailing punctuation in headings.
+    "MD026": false,
+
+    // Table column style is cosmetic — both `|---|` and `| --- |` render
+    // identically in GitHub. Skip it.
+    "MD060": false,
+
+    // Bold lines are sometimes intentional sub-section labels under a heading.
+    "MD036": false
+  },
+
+  // Files to lint.
+  "globs": [
+    "**/*.md"
+  ],
+
+  // Files/dirs to skip.
+  "ignores": [
+    "node_modules",
+    "**/node_modules",
+    "**/dist",
+    "**/dist-cjs",
+    ".changeset",
+    "**/CHANGELOG.md",
+    "packages/anya-ui/anya-ui-*"
+  ]
+}

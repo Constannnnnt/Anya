@@ -21,7 +21,9 @@
   ],
   "scripts": {
     "build": "npm run --workspaces build",
-    "lint": "npm run --workspaces lint",
+    "lint": "npm run --workspaces lint && npm run lint:md",
+    "lint:md": "markdownlint-cli2",
+    "lint:md:fix": "markdownlint-cli2 --fix",
     "test": "npm run --workspaces test",
     "typecheck": "npm run --workspaces lint",
     "changeset": "changeset",
@@ -32,6 +34,7 @@
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.7",
+    "markdownlint-cli2": "^0.22.1",
     "typescript": "^5.9.3"
   }
 }

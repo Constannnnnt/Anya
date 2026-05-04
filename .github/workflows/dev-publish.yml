@@ -1,0 +1,189 @@
+name: Dev Publish
+
+# Runs every day at 06:00 UTC.
+#   • DST (EDT, Mar–Nov):   that's 02:00 ET, the configured target.
+#   • Standard (EST, Nov–Mar): that's 01:00 ET — close enough.
+# GitHub Actions cron is fixed UTC and does not follow DST. If you want a
+# strict 02:00 ET year-round, you'd need two cron lines guarded on month.
+#
+# What this workflow does:
+#   1. Diff HEAD against the last `last-dev-publish` git tag.
+#   2. Filter out bot commits (changesets / dependabot / github-actions[bot]
+#      and any commit whose subject starts with "chore(release):" or
+#      "Version Packages").
+#   3. If anything human remains, bump the package to a prerelease version
+#      `x.y.z-dev.<timestamp>.<sha>`, validate, and publish to npm with the
+#      `dev` dist-tag.
+#   4. Move the `last-dev-publish` tag to HEAD so the next run knows the
+#      cutoff.
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch: # also allow manual trigger for debugging
+
+concurrency:
+  group: dev-publish
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    outputs:
+      should_publish: ${{ steps.gate.outputs.should_publish }}
+      base_sha: ${{ steps.gate.outputs.base_sha }}
+      version: ${{ steps.gate.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Decide whether to publish
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Find the marker tag. If it doesn't exist (first run), use the
+          # earliest commit so every commit is "since last publish".
+          if git rev-parse --verify --quiet refs/tags/last-dev-publish > /dev/null; then
+            BASE_SHA="$(git rev-parse refs/tags/last-dev-publish)"
+            echo "Last dev publish: $BASE_SHA"
+          else
+            BASE_SHA="$(git rev-list --max-parents=0 HEAD | head -n 1)"
+            echo "No last-dev-publish tag found. Treating $BASE_SHA (root commit) as the baseline."
+          fi
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+
+          HEAD_SHA="$(git rev-parse HEAD)"
+          if [ "$BASE_SHA" = "$HEAD_SHA" ]; then
+            echo "HEAD is already at the last dev publish. Nothing to do."
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Enumerate commits and classify each.
+          # `%H|%an|%ae|%s` → sha | author name | author email | subject.
+          mapfile -t COMMITS < <(git log "$BASE_SHA..HEAD" --format='%H|%an|%ae|%s')
+
+          if [ "${#COMMITS[@]}" -eq 0 ]; then
+            echo "No commits since last dev publish."
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          HUMAN_COMMITS=0
+          for line in "${COMMITS[@]}"; do
+            sha="${line%%|*}"
+            rest="${line#*|}"
+            author_name="${rest%%|*}"
+            rest="${rest#*|}"
+            author_email="${rest%%|*}"
+            subject="${rest#*|}"
+
+            is_bot=false
+
+            # Author signals
+            if [[ "$author_name" == *"[bot]"* ]]; then is_bot=true; fi
+            if [[ "$author_email" == *"[bot]@"* ]]; then is_bot=true; fi
+            if [[ "$author_email" == *"@users.noreply.github.com" && "$author_name" == *"-bot"* ]]; then is_bot=true; fi
+
+            # Commit subject signals (changesets / release tooling)
+            if [[ "$subject" == "chore(release):"* ]]; then is_bot=true; fi
+            if [[ "$subject" == "Version Packages"* ]]; then is_bot=true; fi
+            if [[ "$subject" == "chore: release"* ]]; then is_bot=true; fi
+            if [[ "$subject" == *"[skip dev-publish]"* ]]; then is_bot=true; fi
+
+            if [ "$is_bot" = false ]; then
+              HUMAN_COMMITS=$((HUMAN_COMMITS + 1))
+              echo "  [eligible] $sha $author_name — $subject"
+            else
+              echo "  [skipped]  $sha $author_name — $subject"
+            fi
+          done
+
+          if [ "$HUMAN_COMMITS" -eq 0 ]; then
+            echo "All commits since last publish are bot/release commits. Skipping."
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BASE_VERSION="$(node -p "require('./packages/anya-ui/package.json').version")"
+          TIMESTAMP="$(date -u +%Y%m%d%H%M%S)"
+          SHORT_SHA="$(git rev-parse --short HEAD)"
+          DEV_VERSION="${BASE_VERSION}-dev.${TIMESTAMP}.${SHORT_SHA}"
+
+          echo "should_publish=true" >> "$GITHUB_OUTPUT"
+          echo "version=$DEV_VERSION" >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: evaluate
+    if: needs.evaluate.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # needed to push the marker tag
+      id-token: write       # needed for npm provenance
+    environment: dev-publish
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Validate
+        run: |
+          npm run lint
+          npm run test
+          npm run build
+
+      - name: Apply dev version
+        env:
+          DEV_VERSION: ${{ needs.evaluate.outputs.version }}
+        run: |
+          set -euo pipefail
+          echo "Setting version to $DEV_VERSION"
+          # Use --no-git-tag-version so we don't create a git tag/commit;
+          # the publish does not need to be committed back.
+          npm version "$DEV_VERSION" --no-git-tag-version --workspace anya-ui
+
+      - name: Publish to npm with dev tag
+        run: npm publish --workspace anya-ui --access public --provenance --tag dev
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Advance last-dev-publish tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git tag -f last-dev-publish HEAD
+          git push -f origin refs/tags/last-dev-publish
+
+      - name: Summarize
+        env:
+          DEV_VERSION: ${{ needs.evaluate.outputs.version }}
+        run: |
+          {
+            echo "## Dev publish complete";
+            echo "";
+            echo "Published \`anya-ui@$DEV_VERSION\` to npm with dist-tag \`dev\`.";
+            echo "";
+            echo "Install with:";
+            echo "";
+            echo '```bash';
+            echo "npm install anya-ui@dev";
+            echo '```';
+          } >> "$GITHUB_STEP_SUMMARY"

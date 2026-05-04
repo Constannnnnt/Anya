@@ -1,83 +1,92 @@
 # Anya UI
 
-Anya UI is a TypeScript framework for adaptive interfaces, where agents can generate views, update persistent app views, and optimize workflows from memory and interaction patterns.
+> Generative, adaptive interfaces for TypeScript and React. Build apps where an agent assembles the UI from registered components and the interface tunes itself to how each user actually works.
 
-This repository is a workspace with:
-- `@anya-ui/core`: catalog, view specs, runtime, memory, optimization contracts.
-- `@anya-ui/react`: React provider, generated/app view runtime, hooks, primitives.
-- `@anya-ui/adapters`: transport adapters, session event builders, and artifact builders.
+Anya UI is a single TypeScript package that gives you three things:
 
-## Architecture
+1. **Generative views** — describe your components once with `defineComponent`; an LLM agent assembles them into UIs in response to user intent.
+2. **A measured behaviour pipeline** — every interaction is collected, projected through ten classical HCI heuristics (Fitts's Law, Hick-Hyman, KLM, Steering Law, Form Friction, etc.), and fused into four composite friction scores per task context.
+3. **A closed-loop recommendation system** — the framework proposes UI changes when friction is high, attributes outcomes after the change is applied, and biases future suggestions by what actually worked.
 
-The current implemented architecture, data flows, and finite roadmap are documented in [docs/current-architecture-and-roadmap.md](./docs/current-architecture-and-roadmap.md).
-The intended simplification direction is documented in [docs/architecture-redraft.md](./docs/architecture-redraft.md).
-The naming and design-pattern decisions are documented in [docs/naming-and-patterns.md](./docs/naming-and-patterns.md).
-The public package boundary is documented in [docs/package-boundaries.md](./docs/package-boundaries.md).
+You write components. The agent writes views. The framework watches what happens and gets better at proposing changes.
 
-The short version:
+```bash
+npm install anya-ui
+```
 
-- `catalog`: define guarded components and tools
-- `views`: support generated UI, persistent app UI, and reusable view templates
-- `state`: keep generated and app views synchronized through a shared state graph
-- `memory`: retain task, user, view, and optimization memory
-- `optimization`: improve interfaces safely from interaction patterns and rollout policies
-- `adapters`: connect Anya to agent runtimes, MCP, and event protocols
+```tsx
+import { AnyaProvider, defineComponent, useAnyaUI, AdaptiveRenderer } from 'anya-ui/react';
+import { createAgentSessionTransport } from 'anya-ui/adapters';
+import { z } from 'zod';
 
-Current implementation focus:
+const Heading = defineComponent({
+  name: 'Heading',
+  description: 'A semantic heading',
+  propsSchema: z.object({ text: z.string(), level: z.number().int().min(1).max(6) }),
+  render: ({ props }) => React.createElement(`h${props.level}`, null, props.text),
+});
 
-- generated views, app views, and reusable view templates
-- a shared state graph for live view data
-- session artifacts that resolve into first-class view results
-- ranked `viewRecommendations` APIs that turn behavior signals into concrete UI suggestions
-- view change APIs that turn recommendation-driven revision runs into previewable drafts, review decisions, and durable app/template updates
-- adapter utilities that turn external agent runtimes into stable `AgentSessionTransport` implementations
-- view-first public APIs in `@anya-ui/core` and `@anya-ui/react`, with legacy `presentation` exports removed from the main entrypoints
-- Stage 5 stabilization completed: direct public APIs, modularized React hook internals, and removal of transition-focused cleanup docs
+const transport = createAgentSessionTransport(async (input) => {
+  // Call your LLM with input.systemPrompt + input.messages.
+  // Emit session events. See docs/getting-started.md.
+  return { events: yourEventStream };
+});
+
+function App() {
+  const ui = useAnyaUI();
+  return (
+    <>
+      <button onClick={() => ui.runAgentSession({
+        userIntent: 'Welcome the user',
+        messages: [],
+        transport,
+      })}>Generate</button>
+      {ui.viewState.spec && <AdaptiveRenderer viewSpec={ui.viewState.spec} />}
+    </>
+  );
+}
+
+export default function Root() {
+  return (
+    <AnyaProvider nodes={[Heading]}>
+      <App />
+    </AnyaProvider>
+  );
+}
+```
+
+## Documentation
+
+| Guide | What's inside |
+|---|---|
+| [**Getting Started**](./docs/getting-started.md) | Install, set up the Provider, register a component, plug in an LLM transport, render your first generated view. |
+| [**Concepts**](./docs/concepts.md) | `ViewSpec`, `Node`, `Skill`, `Memory`, `Behavior pipeline`, `Recommendation`, `View change draft`. |
+| [**Adaptive Behavior**](./docs/adaptive-behavior.md) | The HCI heuristics layer, composite scores, outcome loop, calibration harness — how to actually use the adaptive parts. |
+| [**API Reference**](./docs/api.md) | Verified entry-by-entry signatures for `anya-ui/core`, `anya-ui/react`, `anya-ui/adapters`. |
+
+## Subpath imports
+
+```ts
+import { createAnyaRuntime, ViewRecommendationEngine } from 'anya-ui/core';
+import { AnyaProvider, useAnyaUI, defineComponent } from 'anya-ui/react';
+import { createAgentSessionTransport, createViewArtifact } from 'anya-ui/adapters';
+```
+
+The umbrella import (`from 'anya-ui'`) re-exports everything; subpaths exist for tree-shaking and to make the layered architecture explicit.
 
 ## Compatibility
 
-- Node: `>=18`
-- Package manager: `npm@10.9.2`
-- Module format: ESM + CJS dual publish
+- Node `>=18`
+- React 18 or 19
+- ESM + CJS dual publish
+- TypeScript 5.7+
 
-## Install
+## Contributing & ops
 
-```bash
-npm ci
-```
+- Workspace setup, lint/test/build commands: see [CONTRIBUTING.md](./CONTRIBUTING.md).
+- Security policy: [SECURITY.md](./SECURITY.md).
+- Versioning: changesets — `npm run changeset`, then `npm run version-packages`.
 
-## Workspace Commands
+## License
 
-```bash
-npm run lint
-npm run test
-npm run build
-```
-
-## Packaging Checks
-
-```bash
-npx -y publint@0.3.18 packages/adapters
-npx -y publint@0.3.18 packages/core
-npx -y publint@0.3.18 packages/react
-cd packages/adapters && npx -y @arethetypeswrong/cli@0.18.2 --pack . --profile node16 && cd ../..
-cd packages/core && npx -y @arethetypeswrong/cli@0.18.2 --pack . --profile node16 && cd ../..
-cd packages/react && npx -y @arethetypeswrong/cli@0.18.2 --pack . --profile node16 && cd ../..
-npm audit --omit=dev
-npm pack --dry-run --json --workspace @anya-ui/adapters
-npm pack --dry-run --json --workspace @anya-ui/core
-npm pack --dry-run --json --workspace @anya-ui/react
-```
-
-## Release Flow
-
-1. Capture semver impact: `npm run changeset`.
-2. Version packages: `npm run version-packages`.
-3. Run full validation (`lint`, `test`, `build`, `publint`, `arethetypeswrong`, `npm pack --dry-run`).
-4. Publish first with `next` tag.
-5. Promote to `latest` after smoke validation.
-
-See:
-- [CONTRIBUTING.md](./CONTRIBUTING.md)
-- [SECURITY.md](./SECURITY.md)
-- [CHANGELOG.md](./CHANGELOG.md)
+MIT — see [LICENSE](./LICENSE).

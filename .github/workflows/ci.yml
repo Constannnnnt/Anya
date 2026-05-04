@@ -35,8 +35,11 @@ jobs:
           git fetch origin "${{ github.base_ref }}":"refs/remotes/origin/${{ github.base_ref }}" --depth=1
           npm run changeset:check -- "origin/${{ github.base_ref }}"
 
-      - name: Lint
-        run: npm run lint
+      - name: Markdown lint
+        run: npm run lint:md
+
+      - name: Workspace lint (typecheck)
+        run: npm run --workspaces lint
 
       - name: Test
         run: npm run test
@@ -46,24 +49,22 @@ jobs:
 
       - name: Runtime smoke (ESM + CJS)
         run: |
-          node --input-type=module -e "await import('@anya-ui/core');"
-          node --input-type=module -e "await import('@anya-ui/react');"
-          node -e "require('@anya-ui/core'); require('@anya-ui/react');"
+          node --input-type=module -e "await import('anya-ui');"
+          node --input-type=module -e "await import('anya-ui/core');"
+          node --input-type=module -e "await import('anya-ui/react');"
+          node --input-type=module -e "await import('anya-ui/adapters');"
+          node -e "require('anya-ui');"
+          node -e "require('anya-ui/core');"
 
       - name: publint
-        run: |
-          npx -y publint@0.3.18 packages/core
-          npx -y publint@0.3.18 packages/react
+        run: npx -y publint@0.3.18 packages/anya-ui
 
       - name: arethetypeswrong
-        run: |
-          cd packages/core && npx -y @arethetypeswrong/cli@0.18.2 --pack . --profile node16
-          cd ../react && npx -y @arethetypeswrong/cli@0.18.2 --pack . --profile node16
+        working-directory: packages/anya-ui
+        run: npx -y @arethetypeswrong/cli@0.18.2 --pack . --profile node16
 
-      - name: npm audit
+      - name: npm audit (prod deps only)
         run: npm audit --omit=dev
 
       - name: npm pack dry-run
-        run: |
-          npm pack --dry-run --json --workspace @anya-ui/core
-          npm pack --dry-run --json --workspace @anya-ui/react
+        run: npm pack --dry-run --json --workspace anya-ui

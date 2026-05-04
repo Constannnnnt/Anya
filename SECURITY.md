@@ -9,9 +9,11 @@ Security fixes are applied to the latest published minor line.
 Please do not open a public issue for suspected vulnerabilities.
 
 Report privately by opening a GitHub security advisory for this repository:
+
 - https://github.com/Constannnnnt/Anya/security/advisories/new
 
 Include:
+
 - affected package and version
 - impact and attack scenario
 - reproduction steps or proof of concept

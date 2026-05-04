@@ -1,0 +1,169 @@
+name: Publish
+
+# Manual public release. Publishes the current `packages/anya-ui` version to:
+#   1. npm (public registry, with provenance)
+#   2. GitHub Packages (under a scoped name derived from the repo owner)
+#
+# Run from the GitHub UI: Actions → Publish → "Run workflow".
+# Make sure the changeset version bump is already merged on the chosen ref.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dist_tag:
+        description: 'npm dist-tag (e.g. latest, next)'
+        required: true
+        default: latest
+      skip_github_packages:
+        description: 'Skip publishing to GitHub Packages'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Confirm release commit (no pending changesets)
+        run: npm run changeset:release-check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+
+      - name: publint
+        run: npx -y publint@0.3.18 packages/anya-ui
+
+      - name: arethetypeswrong
+        working-directory: packages/anya-ui
+        run: npx -y @arethetypeswrong/cli@0.18.2 --pack . --profile node16
+
+      - name: npm audit (prod deps only)
+        run: npm audit --omit=dev
+
+  publish-npm:
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write    # needed for npm provenance
+    environment: publish
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish anya-ui to npm
+        run: npm publish --workspace anya-ui --access public --provenance --tag "${{ github.event.inputs.dist_tag }}"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Summarize
+        run: |
+          VERSION="$(node -p "require('./packages/anya-ui/package.json').version")"
+          {
+            echo "## npm publish complete";
+            echo "";
+            echo "Published \`anya-ui@$VERSION\` to https://registry.npmjs.org with dist-tag \`${{ github.event.inputs.dist_tag }}\`.";
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish-github-packages:
+    needs: publish-npm
+    if: ${{ github.event.inputs.skip_github_packages != 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    environment: publish
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node (GitHub Packages)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://npm.pkg.github.com
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Rename package for GitHub Packages
+        # GitHub Packages requires the package name to be scoped under the
+        # owning org/user. We mutate package.json *in place* before publish
+        # and do not commit the change.
+        run: |
+          set -euo pipefail
+          OWNER_LOWER="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          SCOPED_NAME="@${OWNER_LOWER}/anya-ui"
+          echo "Renaming package to $SCOPED_NAME"
+          node - <<EOF
+            const fs = require('node:fs');
+            const path = 'packages/anya-ui/package.json';
+            const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+            pkg.name = '${SCOPED_NAME:-@anya/anya-ui}';
+            pkg.publishConfig = { ...(pkg.publishConfig || {}), registry: 'https://npm.pkg.github.com' };
+            fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
+          EOF
+          echo "Resulting name field:"
+          node -p "require('./packages/anya-ui/package.json').name"
+
+      - name: Publish to GitHub Packages
+        # No --provenance: GitHub Packages does not support npm provenance.
+        run: |
+          cd packages/anya-ui
+          npm publish --tag "${{ github.event.inputs.dist_tag }}"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summarize
+        run: |
+          OWNER_LOWER="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          VERSION="$(node -p "require('./packages/anya-ui/package.json').version")"
+          {
+            echo "## GitHub Packages publish complete";
+            echo "";
+            echo "Published \`@${OWNER_LOWER}/anya-ui@$VERSION\` to https://npm.pkg.github.com.";
+            echo "";
+            echo "Install with:";
+            echo '```bash';
+            echo "npm install @${OWNER_LOWER}/anya-ui --registry https://npm.pkg.github.com";
+            echo '```';
+          } >> "$GITHUB_STEP_SUMMARY"
