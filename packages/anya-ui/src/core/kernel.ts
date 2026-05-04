@@ -60,8 +60,7 @@ import {
   type MemoryStorePolicy,
   type MemoryStoreRuntime,
 } from './memory/ui/storeFactory';
-import type { IndexedDbMemoryStoreOptions } from './memory/ui/indexedDbAdapter';
-import type { SQLiteMemoryStoreOptions } from './memory/ui/sqliteAdapter';
+// Empty line to maintain line numbering if possible, or just remove.
 import { applyDecodedSpec, type ApplySpecResult } from './specLifecycle';
 import {
   ViewRecommendationEngine,
@@ -98,8 +97,9 @@ export interface AnyaRuntimeConfig {
     store?: MemoryStore;
     storePolicy?: MemoryStorePolicy;
     storeRuntime?: MemoryStoreRuntime;
-    sqlite?: SQLiteMemoryStoreOptions;
-    indexeddb?: IndexedDbMemoryStoreOptions;
+    filename?: string;
+    dbName?: string;
+    dbVersion?: number;
     /** Explicit opt-in for downgrading a requested persistent store to memory. */
     allowMemoryDowngrade?: boolean;
     triggerConfig?: import('./memory/ui/triggerManager').TriggerConfig;
@@ -238,8 +238,9 @@ export function createAnyaRuntime(config?: AnyaRuntimeConfig): AnyaRuntime {
       uiMemoryStore = createMemoryStoreByPolicySync({
         policy: config.uiMemory.storePolicy,
         runtime: config.uiMemory.storeRuntime,
-        sqlite: config.uiMemory.sqlite,
-        indexeddb: config.uiMemory.indexeddb,
+        filename: config.uiMemory.filename,
+        dbName: config.uiMemory.dbName,
+        dbVersion: config.uiMemory.dbVersion,
         allowMemoryDowngrade: config.uiMemory.allowMemoryDowngrade,
       });
     } else {

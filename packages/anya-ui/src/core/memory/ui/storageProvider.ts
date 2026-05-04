@@ -93,6 +93,7 @@ export class NodeStorageProvider implements StorageProvider {
       const row = this.sqliteDb.prepare('SELECT data FROM memory_snapshot WHERE id = ?').get('root');
       return row?.data ? JSON.parse(row.data) : null;
     } else {
+      // @ts-ignore
       const fs = await import('node:fs');
       const jsonFile = this.filename.replace(/\.sqlite$/, '.json');
       if (!fs.existsSync(jsonFile)) return null;
@@ -108,7 +109,9 @@ export class NodeStorageProvider implements StorageProvider {
         .prepare('INSERT INTO memory_snapshot (id, data, updated_ts) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET data=excluded.data, updated_ts=excluded.updated_ts')
         .run('root', JSON.stringify(snapshot), Date.now());
     } else {
+      // @ts-ignore
       const fs = await import('node:fs');
+      // @ts-ignore
       const path = await import('node:path');
       const jsonFile = this.filename.replace(/\.sqlite$/, '.json');
       fs.mkdirSync(path.dirname(jsonFile), { recursive: true });
@@ -126,8 +129,11 @@ export class NodeStorageProvider implements StorageProvider {
     // Check for node:sqlite support (Node 22.5+)
     try {
       const sqliteSpecifier = `node:${'sqlite'}`;
+      // @ts-ignore
       const { DatabaseSync } = await import(/* @vite-ignore */ sqliteSpecifier);
+      // @ts-ignore
       const path = await import('node:path');
+      // @ts-ignore
       const fs = await import('node:fs');
       fs.mkdirSync(path.dirname(this.filename), { recursive: true });
       
