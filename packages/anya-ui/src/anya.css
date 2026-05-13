@@ -1,0 +1,105 @@
+.anya {
+  font-family: system-ui, -apple-system, sans-serif;
+  line-height: 1.6;
+  color: var(--anya-text, #1a1a1a);
+}
+
+.anya-content {
+  margin-bottom: 1rem;
+}
+
+.anya-content > *:last-child {
+  margin-bottom: 0;
+}
+
+.anya-action {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  margin: 0.25rem 0.25rem 0.25rem 0;
+  border: 1px solid var(--anya-border, #d1d5db);
+  border-radius: 6px;
+  background: var(--anya-btn-bg, #fff);
+  color: var(--anya-btn-text, #1a1a1a);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.anya-action:hover:not(:disabled) {
+  background: var(--anya-btn-hover, #f3f4f6);
+  border-color: var(--anya-btn-border-hover, #9ca3af);
+}
+
+.anya-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.anya-input {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid var(--anya-border, #d1d5db);
+  border-radius: 8px;
+  background: var(--anya-form-bg, #fafafa);
+}
+
+.anya-input-label {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.anya-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.anya-field label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--anya-label, #6b7280);
+}
+
+.anya-field input,
+.anya-field textarea,
+.anya-field select {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--anya-border, #d1d5db);
+  border-radius: 4px;
+  font-size: 0.875rem;
+  background: var(--anya-input-bg, #fff);
+}
+
+.anya-field input:focus,
+.anya-field textarea:focus,
+.anya-field select:focus {
+  outline: 2px solid var(--anya-focus, #3b82f6);
+  outline-offset: 1px;
+}
+
+.anya-group {
+  margin: 1rem 0;
+}
+
+.anya-layout-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.anya-layout-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.anya-layout-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}

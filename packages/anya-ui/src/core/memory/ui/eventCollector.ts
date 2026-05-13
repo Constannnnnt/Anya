@@ -77,7 +77,8 @@ export class UiEventCollector {
   }
 
   private mapSource(source: RuntimeEventSource): UiMemoryEvent['source'] {
-    return source;
+    if (source === 'user' || source === 'agent' || source === 'system') return source as UiMemoryEvent['source'];
+    return 'system';
   }
 
   private estimateTokens(event: RuntimeEvent): number {

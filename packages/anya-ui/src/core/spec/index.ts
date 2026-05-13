@@ -1,5 +1,1 @@
-export {
-  CURRENT_UI_SPEC_VERSION,
-  normalizeUISpecEnvelope,
-  withSpecVersion,
-} from './versioning';
+export const CURRENT_UI_SPEC_VERSION = 1;

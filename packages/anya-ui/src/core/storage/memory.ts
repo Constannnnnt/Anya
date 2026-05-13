@@ -1,9 +1,3 @@
-/**
- * ../../core — InMemoryStorage
- *
- * In-memory storage adapter for environments without file access.
- */
-
 import type { FileStorage } from './interface';
 
 export class InMemoryStorage implements FileStorage {

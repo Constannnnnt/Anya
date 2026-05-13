@@ -44,7 +44,7 @@ export interface UiBehaviorPipelineConfig {
   captureSnapshots?: boolean;
   profile?: AdaptiveProfile;
   materializeProfile?: boolean;
-  viewEngine?: import('../../../views/engine').ViewEngine;
+  viewEngine?: unknown;
 }
 
 export interface BehaviorAnalysisRunCapture {
@@ -244,9 +244,9 @@ export class UiBehaviorPipeline {
       );
     }
 
-    if (this.config.viewEngine) {
+    if (this.config.viewEngine && typeof (this.config.viewEngine as any).setContext === 'function') {
       const sessionFindings = await this.behaviorStore.findFindings(this.config.actorId);
-      this.config.viewEngine.setContext({ findings: sessionFindings });
+      (this.config.viewEngine as any).setContext({ findings: sessionFindings });
     }
 
     this.config.trigger.reset();
