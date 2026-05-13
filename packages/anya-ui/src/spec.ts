@@ -54,7 +54,7 @@ export function isInput(n: SpecNode): n is InputNode {
 }
 
 export function isGroup(n: SpecNode): n is GroupNode {
-  return 'layout' in n || 'content' in n;
+  return 'content' in n && Array.isArray((n as GroupNode).content);
 }
 
 export function isContent(n: SpecNode): n is ContentNode {

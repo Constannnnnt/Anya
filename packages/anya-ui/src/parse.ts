@@ -3,11 +3,6 @@ import type { Spec, SpecNode, ActionNode, InputNode, GroupNode, ContentNode } fr
 
 const FENCE_RE = /^```(\w*)\s*$/;
 
-interface FencedBlock {
-  lang: string;
-  body: string;
-}
-
 interface Segment {
   type: 'markdown' | 'fenced';
   content: string;
@@ -81,6 +76,18 @@ function parseGroupBlock(body: string): { layout?: GroupNode['layout'] } {
   return result;
 }
 
+function segmentToNode(seg: Segment): SpecNode | null {
+  if (seg.type === 'markdown') {
+    const trimmed = seg.content.trim();
+    return trimmed ? { markdown: trimmed } as ContentNode : null;
+  }
+  if (seg.lang === 'action') return parseActionBlock(seg.content);
+  if (seg.lang === 'input') return parseInputBlock(seg.content);
+  const trimmed = seg.content.trim();
+  if (trimmed) return { markdown: '```' + (seg.lang ?? '') + '\n' + trimmed + '\n```' } as ContentNode;
+  return null;
+}
+
 export function parse(raw: string): Spec {
   const segments = splitFences(raw);
   const nodes: SpecNode[] = [];
@@ -89,28 +96,7 @@ export function parse(raw: string): Spec {
   while (i < segments.length) {
     const seg = segments[i];
 
-    if (seg.type === 'markdown') {
-      const trimmed = seg.content.trim();
-      if (trimmed) {
-        nodes.push({ markdown: trimmed } as ContentNode);
-      }
-      i++;
-      continue;
-    }
-
-    if (seg.lang === 'action') {
-      nodes.push(parseActionBlock(seg.content));
-      i++;
-      continue;
-    }
-
-    if (seg.lang === 'input') {
-      nodes.push(parseInputBlock(seg.content));
-      i++;
-      continue;
-    }
-
-    if (seg.lang === 'group') {
+    if (seg.type === 'fenced' && seg.lang === 'group') {
       const groupMeta = parseGroupBlock(seg.content);
       const groupContent: SpecNode[] = [];
       i++;
@@ -120,25 +106,16 @@ export function parse(raw: string): Spec {
           i++;
           break;
         }
-        if (inner.type === 'markdown') {
-          const trimmed = inner.content.trim();
-          if (trimmed) groupContent.push({ markdown: trimmed } as ContentNode);
-        } else if (inner.lang === 'action') {
-          groupContent.push(parseActionBlock(inner.content));
-        } else if (inner.lang === 'input') {
-          groupContent.push(parseInputBlock(inner.content));
-        }
+        const node = segmentToNode(inner);
+        if (node) groupContent.push(node);
         i++;
       }
       nodes.push({ layout: groupMeta.layout ?? 'stack', content: groupContent } as GroupNode);
       continue;
     }
 
-    // Unknown fence language — treat as markdown code block
-    const trimmed = seg.content.trim();
-    if (trimmed) {
-      nodes.push({ markdown: '```' + (seg.lang ?? '') + '\n' + trimmed + '\n```' } as ContentNode);
-    }
+    const node = segmentToNode(seg);
+    if (node) nodes.push(node);
     i++;
   }
 

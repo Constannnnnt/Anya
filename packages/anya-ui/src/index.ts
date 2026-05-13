@@ -21,8 +21,12 @@ export function mount(input: Spec | string, target: HTMLElement): AnyaInstance {
   let tree = render(spec, { onAction });
   target.appendChild(tree);
 
+  let lastInput: Spec | string = input;
+
   return {
     update(newInput) {
+      if (newInput === lastInput) return;
+      lastInput = newInput;
       spec = typeof newInput === 'string' ? parse(newInput) : newInput;
       const newTree = render(spec, { onAction });
       target.replaceChild(newTree, tree);

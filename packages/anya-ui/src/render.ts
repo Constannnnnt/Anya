@@ -2,6 +2,8 @@ import { marked } from 'marked';
 import type { Spec, SpecNode, ActionNode, InputNode, GroupNode, ContentNode, FieldDef } from './spec';
 import { isAction, isInput, isGroup, isContent } from './spec';
 
+marked.use({ renderer: { html: () => '' } });
+
 export interface RenderOptions {
   onAction: (name: string, payload: { params?: Record<string, unknown>; values?: Record<string, unknown> }) => void;
 }
@@ -92,6 +94,12 @@ function renderInput(node: InputNode, opts: RenderOptions): HTMLElement {
   return form;
 }
 
+function applyFieldAttrs(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, field: FieldDef) {
+  el.name = field.name;
+  el.id = `anya-field-${field.name}`;
+  if (field.required) el.required = true;
+}
+
 function renderField(field: FieldDef): HTMLElement {
   const wrapper = document.createElement('div');
   wrapper.className = 'anya-field';
@@ -108,19 +116,15 @@ function renderField(field: FieldDef): HTMLElement {
   switch (field.type) {
     case 'textarea': {
       const ta = document.createElement('textarea');
-      ta.name = field.name;
-      ta.id = `anya-field-${field.name}`;
+      applyFieldAttrs(ta, field);
       if (field.placeholder) ta.placeholder = field.placeholder;
       if (field.value != null) ta.value = String(field.value);
-      if (field.required) ta.required = true;
       input = ta;
       break;
     }
     case 'select': {
       const sel = document.createElement('select');
-      sel.name = field.name;
-      sel.id = `anya-field-${field.name}`;
-      if (field.required) sel.required = true;
+      applyFieldAttrs(sel, field);
       for (const opt of field.options ?? []) {
         const option = document.createElement('option');
         option.value = opt;
@@ -134,32 +138,18 @@ function renderField(field: FieldDef): HTMLElement {
     case 'toggle': {
       const cb = document.createElement('input');
       cb.type = 'checkbox';
-      cb.name = field.name;
-      cb.id = `anya-field-${field.name}`;
+      applyFieldAttrs(cb, field);
       if (field.value) cb.checked = true;
       input = cb;
       break;
     }
-    case 'number': {
-      const num = document.createElement('input');
-      num.type = 'number';
-      num.name = field.name;
-      num.id = `anya-field-${field.name}`;
-      if (field.placeholder) num.placeholder = field.placeholder;
-      if (field.value != null) num.value = String(field.value);
-      if (field.required) num.required = true;
-      input = num;
-      break;
-    }
     default: {
-      const txt = document.createElement('input');
-      txt.type = 'text';
-      txt.name = field.name;
-      txt.id = `anya-field-${field.name}`;
-      if (field.placeholder) txt.placeholder = field.placeholder;
-      if (field.value != null) txt.value = String(field.value);
-      if (field.required) txt.required = true;
-      input = txt;
+      const el = document.createElement('input');
+      el.type = field.type === 'number' ? 'number' : 'text';
+      applyFieldAttrs(el, field);
+      if (field.placeholder) el.placeholder = field.placeholder;
+      if (field.value != null) el.value = String(field.value);
+      input = el;
       break;
     }
   }
