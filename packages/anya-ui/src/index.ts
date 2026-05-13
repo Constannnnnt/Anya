@@ -21,14 +21,15 @@ export function mount(input: Spec | string, target: HTMLElement): AnyaInstance {
   let tree = render(spec, { onAction });
   target.appendChild(tree);
 
-  let lastInput: Spec | string = input;
+  let lastSpec = spec;
 
   return {
     update(newInput) {
-      if (newInput === lastInput) return;
-      lastInput = newInput;
-      spec = typeof newInput === 'string' ? parse(newInput) : newInput;
-      const newTree = render(spec, { onAction });
+      const newSpec = typeof newInput === 'string' ? parse(newInput) : newInput;
+      if (newSpec === lastSpec) return;
+      spec = newSpec;
+      lastSpec = newSpec;
+      const newTree = render(newSpec, { onAction });
       target.replaceChild(newTree, tree);
       tree = newTree;
     },
@@ -47,12 +48,11 @@ export function mount(input: Spec | string, target: HTMLElement): AnyaInstance {
   };
 }
 
-export { parse } from './parse';
 export { render } from './render';
-export { encode, encodeHistory } from './encode';
-export { buildSystemPrompt } from './prompt';
 export type { RenderOptions } from './render';
-export type { PromptOptions } from './prompt';
+
+// Re-export the full protocol layer
+export { parse, encode, encodeHistory, buildSystemPrompt, isAction, isInput, isGroup, isContent } from './protocol';
 export type {
   Spec,
   SpecNode,
@@ -62,5 +62,5 @@ export type {
   GroupNode,
   FieldDef,
   ActionFeedback,
-} from './spec';
-export { isAction, isInput, isGroup, isContent } from './spec';
+  PromptOptions,
+} from './protocol';

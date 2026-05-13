@@ -41,6 +41,12 @@
         "default": "./dist/index.js"
       }
     },
+    "./protocol": {
+      "import": {
+        "types": "./dist/protocol.d.ts",
+        "default": "./dist/protocol.js"
+      }
+    },
     "./measure": {
       "import": {
         "types": "./dist/measure.d.ts",
@@ -50,7 +56,7 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "node build.mjs && npx dts-bundle-generator -o dist/index.d.ts src/index.ts --project tsconfig.json --no-banner && npx dts-bundle-generator -o dist/measure.d.ts src/measure.ts --project tsconfig.json --no-banner",
+    "build": "npx tsx build.ts && npx dts-bundle-generator -o dist/protocol.d.ts src/protocol.ts --project tsconfig.json --no-banner && npx dts-bundle-generator -o dist/index.d.ts src/index.ts --project tsconfig.json --no-banner && npx dts-bundle-generator -o dist/measure.d.ts src/measure.ts --project tsconfig.json --no-banner",
     "clean": "rm -rf dist",
     "dev": "tsc -p tsconfig.json --watch",
     "lint": "tsc -p tsconfig.json --noEmit",
@@ -68,6 +74,7 @@
     "dts-bundle-generator": "^9.5.0",
     "esbuild": "^0.28.0",
     "jsdom": "^26.0.0",
+    "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "vitest": "^4.0.18"
   }

@@ -102,4 +102,51 @@ label: Say Hello
     expect(el.querySelector('h1')?.textContent).toBe('Welcome');
     expect(el.querySelector('button')?.textContent).toBe('Say Hello');
   });
+
+  it('strips javascript: URIs from links', () => {
+    const spec: Spec = { nodes: [{ markdown: '[click](javascript:alert(1))' }] };
+    const onAction = vi.fn();
+    const el = render(spec, { onAction });
+
+    const link = el.querySelector('a');
+    if (link) {
+      expect(link.getAttribute('href') ?? '').not.toMatch(/javascript:/i);
+    }
+  });
+
+  it('strips entity-encoded javascript: URIs', () => {
+    const spec: Spec = { nodes: [{ markdown: '[x](&#106;avascript:alert(1))' }] };
+    const onAction = vi.fn();
+    const el = render(spec, { onAction });
+
+    const link = el.querySelector('a');
+    expect(link).toBeNull();
+  });
+
+  it('strips data: URIs from links', () => {
+    const spec: Spec = { nodes: [{ markdown: '[x](data:text/html,<script>alert(1)</script>)' }] };
+    const onAction = vi.fn();
+    const el = render(spec, { onAction });
+
+    const link = el.querySelector('a');
+    expect(link).toBeNull();
+  });
+
+  it('strips vbscript: URIs from links', () => {
+    const spec: Spec = { nodes: [{ markdown: '[x](vbscript:MsgBox)' }] };
+    const onAction = vi.fn();
+    const el = render(spec, { onAction });
+
+    const link = el.querySelector('a');
+    expect(link).toBeNull();
+  });
+
+  it('strips raw HTML tags', () => {
+    const spec: Spec = { nodes: [{ markdown: '<script>alert(1)</script><p>safe</p>' }] };
+    const onAction = vi.fn();
+    const el = render(spec, { onAction });
+
+    expect(el.querySelector('script')).toBeNull();
+    expect(el.innerHTML).not.toContain('<script>');
+  });
 });

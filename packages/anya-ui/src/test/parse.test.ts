@@ -120,4 +120,64 @@ print("hello")
       expect(spec.nodes[0].markdown).toContain('print("hello")');
     }
   });
+
+  it('handles nested groups', () => {
+    const input = `\`\`\`group
+layout: row
+\`\`\`
+
+\`\`\`group
+layout: stack
+\`\`\`
+
+Inner content
+
+\`\`\`end
+\`\`\`
+
+Outer content
+
+\`\`\`end
+\`\`\`
+`;
+    const spec = parse(input);
+    expect(spec.nodes).toHaveLength(1);
+    expect(isGroup(spec.nodes[0])).toBe(true);
+    if (isGroup(spec.nodes[0])) {
+      expect(spec.nodes[0].layout).toBe('row');
+      expect(spec.nodes[0].content).toHaveLength(2);
+      // First child is a nested group
+      const inner = spec.nodes[0].content[0];
+      expect(isGroup(inner)).toBe(true);
+      if (isGroup(inner)) {
+        expect(inner.layout).toBe('stack');
+        expect(inner.content).toHaveLength(1);
+      }
+      // Second child is content
+      expect(isContent(spec.nodes[0].content[1])).toBe(true);
+    }
+  });
+
+  it('survives malformed YAML in action blocks', () => {
+    const input = `\`\`\`action
+name: [broken
+  yaml: {unclosed
+\`\`\`
+`;
+    const spec = parse(input);
+    // Should not throw, malformed block becomes null (dropped)
+    expect(spec.nodes).toHaveLength(0);
+  });
+
+  it('survives malformed YAML in input blocks', () => {
+    const input = `Text before
+
+\`\`\`input
+fields: not_a_list
+\`\`\`
+`;
+    const spec = parse(input);
+    // Content node + the input with empty fields
+    expect(spec.nodes.length).toBeGreaterThanOrEqual(1);
+  });
 });

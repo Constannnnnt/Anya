@@ -1,8 +1,30 @@
-import { marked } from 'marked';
+import { Marked } from 'marked';
 import type { Spec, SpecNode, ActionNode, InputNode, GroupNode, ContentNode, FieldDef } from './spec';
 import { isAction, isInput, isGroup, isContent } from './spec';
 
-marked.use({ renderer: { html: () => '' } });
+const md = new Marked();
+const DANGEROUS_HREF = /^\s*(javascript|vbscript|data):/i;
+
+md.use({
+  renderer: {
+    html: () => '',
+    link({ href, text }) {
+      const decoded = href ? decodeEntities(href) : '';
+      if (DANGEROUS_HREF.test(decoded)) {
+        return text ?? '';
+      }
+      const escaped = href?.replace(/"/g, '&quot;') ?? '';
+      return `<a href="${escaped}" rel="noopener">${text}</a>`;
+    },
+  },
+});
+
+function decodeEntities(str: string): string {
+  return str.replace(/&#(?:x([0-9a-f]+)|(\d+));/gi, (_, hex, dec) => {
+    const code = hex ? parseInt(hex, 16) : parseInt(dec, 10);
+    return String.fromCharCode(code);
+  });
+}
 
 export interface RenderOptions {
   onAction: (name: string, payload: { params?: Record<string, unknown>; values?: Record<string, unknown> }) => void;
@@ -28,7 +50,7 @@ function renderNode(node: SpecNode, opts: RenderOptions): HTMLElement {
 function renderContent(node: ContentNode): HTMLElement {
   const div = document.createElement('div');
   div.className = 'anya-content';
-  div.innerHTML = marked(node.markdown) as string;
+  div.innerHTML = md.parse(node.markdown) as string;
   return div;
 }
 
